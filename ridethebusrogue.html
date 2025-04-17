@@ -1,0 +1,1633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ride the Bus Multiplayer</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding-bottom: 3rem;
+      overflow: auto;
+    }
+    .lobby {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2rem;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      text-align: center;
+      max-width: 400px;
+      margin-bottom: 2rem;
+    }
+    .lobby input {
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 10px;
+      border: none;
+      width: 100%;
+      font-size: 1rem;
+    }
+    .lobby button {
+      padding: 0.75rem;
+      border-radius: 10px;
+      background: #ff4b2b;
+      color: white;
+      border: none;
+      font-size: 1rem;
+      width: 100%;
+      cursor: pointer;
+    }
+    .lobby button:hover {
+      background: #ff6a4b;
+    }
+    .lobby-list {
+      margin-top: 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 1rem;
+      border-radius: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+.player-box.eliminated {
+  opacity: 0.4;
+  font-style: italic;
+}
+    .hidden { display: none; }
+    .player-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+    .player-box { background: #ffffff22; padding: 1rem; border-radius: 10px; text-align: center; min-width: 150px; }
+    .player-box.active { border: 2px solid gold; }
+    .card-area { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin: 1rem 0; }
+    .card { width: 100px; height: 150px; border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+    .card.red { color: red; }
+    .card.black { color: black; }
+    .controls, .betting, .guesses { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+    .controls button, .guesses button { padding: 0.8rem 1.5rem; font-size: 1.1rem; border: none; border-radius: 5px; background: #ff4b2b; color: white; cursor: pointer; }
+    .controls button:hover, .guesses button:hover { background: #ff6a4b; }
+    .status { font-size: 1.2rem; margin-top: 1rem; }
+    input[type=number], select { padding: 0.5rem; border-radius: 5px; border: none; width: 100px; }
+  .shop-item {
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 0.75rem;
+    margin: 0.5rem;
+    flex: 1 1 150px; /* previously 250px */
+    max-width: 180px; /* constrain to prevent huge width */
+    min-width: 120px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease;
+    word-wrap: break-word;
+  }
+
+  .shop-item:hover {
+    transform: scale(1.03);
+  }
+
+  .shop-item button {
+    background-color: #ff4b2b;
+    border: none;
+    padding: 0.5rem 1rem;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 0.5rem;
+  }
+
+  .shop-item button:hover {
+    background-color: #ff6a4b;
+  }
+
+  .glowing-red {
+    box-shadow: 0 0 12px 4px red;
+  }
+
+  .glowing-gold {
+    box-shadow: 0 0 12px 4px gold;
+  }
+
+  #betModifiers,
+  #cardUpgradeArea {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  #playerTokens {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  </style>
+
+</head>
+<body>
+  <h1>Ride the Bus 🚌</h1>
+
+  <div class="lobby" id="lobby">
+    <h2>Join or Create a Game</h2>
+    <input type="text" id="playerName" placeholder="Your Name" />
+    <input type="text" id="lobbyCode" placeholder="Lobby Code (6 chars)" maxlength="6" />
+    <h1></h1>
+    <button id="joinGameBtn">Join Game</button>
+    <h3></h3>
+    <button id="createGameBtn">Create Game</button>
+    <div id="lobbyPlayers" class="lobby-list hidden"></div>
+    <button id="startGameBtn" class="hidden" onclick="startGame()">Start Game</button>
+  </div>
+
+  <div id="gameUI" class="hidden">
+    <div class="player-stats" id="playerStats"></div>
+    <div class="betting">
+      <label for="betAmount">Bet Amount: </label>
+      <input type="number" id="betAmount" value="10" min="1" />
+      <button id="startTurnBtn">Start Turn</button>
+
+    </div>
+    
+      
+    <div class="guesses" id="guessButtons"></div>
+    <div class="card-area" id="cardArea"></div>
+    <div class="status" id="status"></div>
+    <div id="timerBarContainer" style="width: 100%; max-width: 400px; height: 20px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 10px;">
+        <div id="timerBar" style="width: 100%; height: 100%; background: gold; transition: width 1s linear;"></div>
+    </div>
+    <div id="multiplierList" style="margin-top: 20px; padding: 1rem; background: rgba(255, 255, 255, 0.1); border-radius: 10px;">
+      <h3>Multiplier Bonuses</h3>
+      <ul id="multiplierBonuses">
+        <!-- Populated dynamically -->
+      </ul>
+    </div>
+    <div id="shopSection" style="margin-top: 20px; background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 10px;" class="hidden">
+        <h3>🛒 Shop</h3>
+        <div id="playerTokens">Tokens: 0</div>
+        <div id="betModifiers" style="margin-top: 10px;"></div>
+        <div id="cardUpgradeArea" style="margin-top: 10px;"></div>
+      </div>
+      <div id="playerUpgrades" style="width: 100%; margin-top: 2rem; padding: 1rem; background: rgba(255,255,255,0.05); color: #ccc; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.2);">
+        <!-- Populated dynamically -->
+      </div>
+  </div>
+<audio id="turnSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
+<audio id="loseSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getDatabase, ref, set, update, onValue, get, child, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyD5Zu_Qsv3reVuB6PrombL954zSKHWPewY",
+    authDomain: "ride-the-bus-d9f3f.firebaseapp.com",
+    projectId: "ride-the-bus-d9f3f",
+    storageBucket: "ride-the-bus-d9f3f.firebasestorage.app",
+    messagingSenderId: "1213292677",
+    appId: "1:1213292677:web:123df0546c297f03fb49ec",
+    measurementId: "G-X9VK7R0RQE"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  // Multiplier bonuses per stage (modifiable later)
+  const multipliers = {
+    1: 2,
+    2: 3,
+    3: 4,
+    4: 20,
+    5: 500
+  };
+
+  async function displayMultipliers() {
+  const list = document.getElementById("multiplierBonuses");
+  if (!list || !playerRef) return;
+
+  const snap = await get(playerRef);
+  const player = snap.val();
+  const mults = player?.multipliers || {};
+
+  list.innerHTML = Object.entries(mults).map(([stage, mult]) =>
+    `<li>Stage ${stage}: ${mult}x</li>`
+  ).join('');
+}
+
+
+// Ensure createLobby is hooked up after everything is defined
+window.addEventListener("DOMContentLoaded", () => {
+  const createGameBtn = document.getElementById("createGameBtn");
+  const joinGameBtn = document.getElementById("joinGameBtn");
+  const startGameBtn = document.getElementById("startGameBtn");
+  const startTurnBtn = document.getElementById("startTurnBtn");
+  const resetGameBtn = document.querySelector(".controls button");
+
+  if (createGameBtn) createGameBtn.addEventListener("click", () => {
+    const generatedCode = generateLobbyCode();
+    document.getElementById('lobbyCode').value = generatedCode;
+    isHost = true;
+    joinLobby();
+  });
+
+  if (joinGameBtn) joinGameBtn.addEventListener("click", () => {
+    isHost = false;
+    joinLobby();
+  });
+
+  if (startGameBtn) startGameBtn.addEventListener("click", startGame);
+
+  if (startTurnBtn) startTurnBtn.addEventListener("click", async () => {
+    const stateSnapPre = await get(stateRef);
+    const statePre = stateSnapPre.val();
+    if (statePre.currentStage !== 0) {
+      alert("You already started your turn.");
+      return;
+    }
+    
+    correctGuessCount = 0
+    endTurnAlreadyCalled = false;
+    clearCountdown(); // clear the pre-turn timer
+
+    const stateSnap = await get(stateRef);
+    const state = stateSnap.val();
+    if (state.currentPlayer !== playerId) return alert("It's not your turn.");
+
+    // Only declare playerSnap once
+    const playerSnap = await get(playerRef);
+    const bet = parseInt(document.getElementById('betAmount').value);
+
+    if (bet > playerSnap.val().balance || bet <= 0) return alert('Invalid bet amount.');
+    
+    const newBalance = playerSnap.val().balance - bet;
+    
+    const isAllIn = bet === playerSnap.val().balance;
+    await update(playerRef, {
+      balance: newBalance,
+      isAllIn: isAllIn
+    });
+
+    localPlayer.balance = newBalance;
+
+    await update(stateRef, {
+      currentPlayer: playerId,
+      currentStage: 1,
+      drawnCards: [],
+      bet,
+      status: `${localPlayer.name} - Stage 1: Red or Black?`
+    });
+
+    startCountdown(20, () => {
+      endTurn("Ran out of time! You lose.", 0);
+    });
+    
+  });
+
+  if (resetGameBtn) resetGameBtn.addEventListener("click", resetGame);
+});
+
+    let lobbyCode, playerId, playerRef, stateRef, deckRef;
+    let localPlayer = {};
+    let isHost = false;
+    let drawnCards = [];
+    let lastKnownCurrentPlayer = null;
+    let countdownInterval = null;
+    let countdownTimeout = null;
+    let maxBetsPerPlayer = 10;
+    let correctGuessCount = 0;
+    
+    function generateLobbyCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+
+    window.createLobby = () => {
+      const generatedCode = generateLobbyCode();
+      document.getElementById('lobbyCode').value = generatedCode;
+      isHost = true;
+      joinLobby();
+    };
+    
+    let joiningInProgress = false;
+    window.joinLobby = async () => {
+      if (joiningInProgress) return; // prevent double joins
+      joiningInProgress = true;
+
+      if (playerId) {
+        joiningInProgress = false;
+        return alert('You have already joined this lobby.');
+      }
+
+      lobbyCode = document.getElementById('lobbyCode').value.trim().toUpperCase();
+      const name = document.getElementById('playerName').value.trim();
+      if (!name || lobbyCode.length !== 6) {
+        joiningInProgress = false;
+        return alert('Please enter a name and valid 6-char lobby code.');
+      }
+
+      const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+      const players = playersSnap.val() || {};
+
+      const nameTaken = Object.values(players).some(p => p.name === name);
+      if (nameTaken) {
+        joiningInProgress = false;
+        return alert('That name is already taken in this lobby.');
+      }
+
+      const alreadyJoined = Object.entries(players).some(([_, p]) => p.name === name && p.id === playerId);
+      if (alreadyJoined) {
+        joiningInProgress = false;
+        return alert('You have already joined this lobby.');
+      }
+
+      playerId = `player_${Math.floor(Math.random() * 100000)}`;
+      playerRef = ref(db, `games/${lobbyCode}/players/${playerId}`);
+      stateRef = ref(db, `games/${lobbyCode}/state`);
+      deckRef = ref(db, `games/${lobbyCode}/deck`);
+
+      localPlayer = {
+        name,
+        balance: 100,
+        score: 0,
+        roundsWon: 0,
+        betsMade: 0,
+        eliminated: false,
+        purchaseTokens: 0,
+        cardUpgrades: [],
+        multipliers: {
+          1: 2,
+          2: 3,
+          3: 4,
+          4: 20,
+          5: 500
+        }
+      };
+
+      await set(playerRef, localPlayer);
+
+      const lobbyList = document.getElementById('lobbyPlayers');
+      lobbyList.classList.remove('hidden');
+      if (isHost) document.getElementById('startGameBtn').classList.remove('hidden');
+
+      onValue(ref(db, `games/${lobbyCode}/players`), (snapshot) => {
+        const playersRef = ref(db, `games/${lobbyCode}/players`);
+        onValue(playersRef, (snapshot) => {
+          const players = snapshot.val();
+          if (!players) return;
+
+          get(stateRef).then(stateSnap => {
+            const state = stateSnap.val();
+            const currentId = state?.currentPlayer;
+
+            updatePlayerStats(Object.entries(players).map(([id, data]) => ({
+              id,
+              ...data,
+              isCurrent: id === currentId
+            })));
+          });
+        });
+        const players = snapshot.val();
+        if (!players) return;
+        lobbyList.innerHTML = '<h3>Players in Lobby:</h3>' +
+          Object.values(players).map(p => `<div>${p.name}</div>`).join('');
+
+        get(stateRef).then(stateSnap => {
+          const state = stateSnap.val();
+          const currentId = state?.currentPlayer;
+          updatePlayerStats(Object.entries(players).map(([id, data]) => ({
+            id,
+            ...data,
+            isCurrent: id === currentId
+          })));
+        });
+      });
+
+      onValue(stateRef, async (snapshot) => {
+        const state = snapshot.val();
+        if (state) {
+          if (state.gameStarted) {
+            document.getElementById('lobby').classList.add('hidden');
+            document.getElementById('gameUI').classList.remove('hidden');
+          }
+          if (state.maxBetsPerPlayer) {
+            maxBetsPerPlayer = state.maxBetsPerPlayer;
+          }
+
+          updateGameDOM(state);
+
+          const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+          const players = playersSnap.val();
+          const currentId = state?.currentPlayer;
+
+          updatePlayerStats(Object.entries(players).map(([id, data]) => ({
+            id,
+            ...data,
+            isCurrent: id === currentId
+          })));
+
+          if (!window.playedToneIds) window.playedToneIds = new Set();
+
+          (state.successTones || []).forEach(tone => {
+            if (!window.playedToneIds.has(tone.id)) {
+              window.playedToneIds.add(tone.id);
+              correctGuessCount = tone.count;
+              playSuccessTone();
+            }
+          });
+
+          if (!window.playedLoseToneIds) window.playedLoseToneIds = new Set();
+
+          (state.loseTones || []).forEach(tone => {
+            if (!window.playedLoseToneIds.has(tone.id)) {
+              window.playedLoseToneIds.add(tone.id);
+              playLoseTone();
+            }
+          });
+
+          if (currentId !== lastKnownCurrentPlayer && currentId === playerId) {
+            correctGuessCount = 0;
+            const playerSnap = await get(playerRef);
+            const playerData = playerSnap.val();
+
+            const interestPercent = playerData.interestPercent || 0;
+            if (interestPercent > 0) {
+              const interest = Math.floor(playerData.balance * (interestPercent / 100));
+              const newBalance = playerData.balance + interest;
+              await update(playerRef, { balance: newBalance });
+              localPlayer.balance = newBalance;
+              alert(`💰 ${playerData.name}, you earned $${interest} in interest (${interestPercent}%)!`);
+            }
+
+            playTurnSound();
+            startCountdown(20, () => {
+              endTurn("Ran out of time before starting turn!", 0);
+            });
+          }
+          lastKnownCurrentPlayer = currentId;
+
+          if (state.currentStage === 0) {
+            const playerSnap = await get(playerRef);
+            const playerData = playerSnap.val();
+
+            if (playerData.showShop && (playerData.purchaseTokens || 0) > 0) {
+              showShopOptions(playerData.isRoundWinner, playerData);
+              await update(playerRef, { showShop: false });
+            }
+          }
+        }
+      });
+
+      joiningInProgress = false;
+    };
+
+  window.startGame = () => {
+  const fullDeck = [];
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  for (const suit of suits) {
+    for (const val of values) {
+      fullDeck.push({ text: val + suit, suit, value: val === 'A' ? 14 : val === 'K' ? 13 : val === 'Q' ? 12 : val === 'J' ? 11 : parseInt(val) });
+    }
+  }
+  fullDeck.sort(() => Math.random() - 0.5);
+  set(deckRef, fullDeck);
+  get(ref(db, `games/${lobbyCode}/players`)).then((snap) => {
+  const players = snap.val();
+  const playerCount = Object.keys(players).length;
+
+  // Determine max bets
+  if (playerCount >= 6) maxBetsPerPlayer = 3;
+  else if (playerCount >= 3) maxBetsPerPlayer = 7;
+  else if (playerCount >= 4) maxBetsPerPlayer = 5;
+
+
+  else maxBetsPerPlayer = 10;
+
+  const firstPlayerId = Object.keys(players)[0];
+  set(stateRef, {
+    gameStarted: true,
+    currentPlayer: firstPlayerId,
+    currentStage: 0,
+    drawnCards: [],
+    status: `Waiting for ${players[firstPlayerId].name} to start their turn.`,
+    maxBetsPerPlayer: maxBetsPerPlayer
+  });
+});
+
+};
+
+async function applyCardUpgradeBonus(card) {
+  const snap = await get(playerRef);
+  const playerData = snap.val();
+  const match = (playerData.cardUpgrades || []).find(up => up.text === card.text);
+  if (!match) return;
+
+  if (match.effect === '+1 bet') {
+    const roundBonus = playerData.roundBetBonus || 0;
+    await update(playerRef, { roundBetBonus: roundBonus + 1 });
+    console.log(`Upgrade applied for ${card.text}: +1 bet this round`);
+  }
+
+  if (match.effect === 'bonus_cash_25') {
+    const stateSnap = await get(stateRef);
+    const state = stateSnap.val();
+    const bet = state.bet || 0;
+    const bonus = Math.floor(bet * 0.25);
+
+    localPlayer.balance += bonus;
+    await update(playerRef, {
+      balance: localPlayer.balance
+    });
+
+    console.log(`Upgrade applied for ${card.text}: gained $${bonus}`);
+  }
+  if (match.effect === 'remove_card') {
+    console.log(`Upgrade applied for ${card.text}: card removed from deck`);
+    // No effect to apply at draw time, since card should be filtered from deck
+  }
+}
+
+function createCardDisplay(card, effect = null) {
+  const el = document.createElement('div');
+  el.className = 'card ' + ((card.suit === '♥' || card.suit === '♦') ? 'red' : 'black');
+
+  if (effect === '+1 bet') {
+    el.style.boxShadow = '0 0 12px 4px limegreen'; // green glow
+  } else if (effect === 'bonus_cash_25') {
+    el.style.boxShadow = '0 0 12px 4px gold';
+  } else if (effect === 'remove_card') {
+    el.style.boxShadow = '0 0 12px 4px red'; // red glow
+  }
+
+  el.textContent = card.text;
+  return el;
+}
+
+
+async function drawUniqueCard(deck, drawnCards, excludeSameValue = false) {
+  const snap = await get(playerRef);
+  const playerData = snap.val();
+  const removedCards = (playerData.cardUpgrades || [])
+    .filter(up => up.effect === 'remove_card')
+    .map(up => up.text);
+
+  let card = null;
+  let retries = deck.length;
+
+  while (retries-- > 0) {
+    const attempt = deck.pop();
+
+    const isDuplicateCard = drawnCards.some(c => c.text === attempt.text);
+    const isDuplicateValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
+    const isRemoved = removedCards.includes(attempt.text);
+
+    if (!isDuplicateCard && !isDuplicateValue && !isRemoved) {
+      card = attempt;
+      break;
+    } else {
+      deck.unshift(attempt); // put it back
+      deck.sort(() => Math.random() - 0.5); // reshuffle slightly
+    }
+  }
+
+  return card;
+}
+
+
+async function handleGuess(guess, state) {
+  const stage = state.currentStage;
+  let result = '';
+  const bet = state.bet;
+  const playerPath = `games/${lobbyCode}/players/${playerId}`;
+
+  if (stage === 1) {
+    const deckSnap = await get(deckRef);
+    const deck = deckSnap.val() || [];
+
+    const card = deck.pop();
+    if (!card) {
+      return endTurn('Deck is empty. Round ending early.', 0);
+    }
+
+    const isRed = card.suit === '♥' || card.suit === '♦';
+    if ((guess === 'Red' && isRed) || (guess === 'Black' && !isRed)) {
+      state.drawnCards = [card];
+      await applyCardUpgradeBonus(card);
+
+      state.currentStage = 2;
+      await set(deckRef, deck);
+      await update(stateRef, {
+        ...state,
+        status: 'Correct! Cash out 2x or pick Higher/Lower'
+      });
+      correctGuessCount++;
+      const newToneId = Date.now(); // ensures uniqueness
+      await update(stateRef, {
+        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
+      });
+      return;
+    } else {
+      state.drawnCards = [card];
+      await applyCardUpgradeBonus(card);
+
+      await set(deckRef, deck);
+      await update(stateRef, state);
+      return endTurn('Wrong guess. You lose.', 0);
+    }
+  }
+
+  if (stage === 2) {
+    if (guess === 'Cash Out') {
+      const deckSnap = await get(deckRef);
+      let deck = deckSnap.val() || [];
+      deck = deck.filter(c => c.text !== state.drawnCards[0].text);
+      await set(deckRef, deck);
+      state.drawnCards = [];
+      await update(stateRef, state);
+      const playerSnap = await get(playerRef);
+      let multiplier = playerSnap.val().multipliers?.[1] || 2;
+      const bet = state.bet;
+      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
+        multiplier *= 3;
+      }
+      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+
+    }
+
+    const prev = state.drawnCards[0].value;
+    const deckSnap2 = await get(deckRef);
+    let deck2 = deckSnap2.val() || [];
+    const card2 = await drawUniqueCard(deck2, state.drawnCards, true);
+    await set(deckRef, deck2);
+    state.drawnCards.push(card2);
+    await applyCardUpgradeBonus(card2);
+    const curr = card2.value;
+
+    if ((guess === 'Higher' && curr > prev) || (guess === 'Lower' && curr < prev)) {
+      result = 'Correct! Cash out 3x or pick In-Between/Outside';
+      state.currentStage = 3;
+      correctGuessCount++;
+      const newToneId = Date.now(); // ensures uniqueness
+      await update(stateRef, {
+        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
+      });
+    } else {
+      await update(stateRef, state);
+      return endTurn('Wrong guess. You lose.', 0);
+    }
+  }
+
+  else if (stage === 3) {
+    if (guess === 'Cash Out') {
+      const deckSnap = await get(deckRef);
+      let deck = deckSnap.val() || [];
+      const usedCards = state.drawnCards.map(c => c.text);
+      deck = deck.filter(c => !usedCards.includes(c.text));
+      deck.sort(() => Math.random() - 0.5);
+      await set(deckRef, deck);
+      state.drawnCards = [];
+      await update(stateRef, state);
+      const playerSnap = await get(playerRef);
+      let multiplier = playerSnap.val().multipliers?.[2] || 3;
+      const bet = state.bet;
+      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
+        multiplier *= 3;
+      }      
+      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+
+    }
+
+    const deckSnap3 = await get(deckRef);
+    let deck3 = deckSnap3.val() || [];
+    const card3 = await drawUniqueCard(deck3, state.drawnCards, true);
+    await set(deckRef, deck3);
+    state.drawnCards.push(card3);
+    await applyCardUpgradeBonus(card3);
+
+    const [v1, v2] = [state.drawnCards[0].value, state.drawnCards[1].value];
+    const val = card3.value;
+    if ((guess === 'In-Between' && val > Math.min(v1, v2) && val < Math.max(v1, v2)) ||
+        (guess === 'Outside' && (val < Math.min(v1, v2) || val > Math.max(v1, v2)))) {
+      result = 'Correct! Cash out 4x or pick suit';
+      state.currentStage = 4;
+      correctGuessCount++;
+      const newToneId = Date.now(); // ensures uniqueness
+      await update(stateRef, {
+        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
+      });
+    } else {
+      await update(stateRef, state);
+      return endTurn('Wrong guess. You lose.', 0);
+    }
+  }
+
+  else if (stage === 4) {
+    if (guess === 'Cash Out') {
+      const deckSnap = await get(deckRef);
+      const deck = deckSnap.val() || [];
+      deck.sort(() => Math.random() - 0.5);
+      await set(deckRef, deck);
+      const playerSnap = await get(playerRef);
+      let multiplier = playerSnap.val().multipliers?.[3] || 4;
+      const bet = state.bet;
+      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
+        multiplier *= 3;
+      }      
+      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+
+    }
+
+    const deckSnap4 = await get(deckRef);
+    let deck4 = deckSnap4.val() || [];
+    const card4 = await drawUniqueCard(deck4, state.drawnCards, true);
+    await set(deckRef, deck4);
+    state.drawnCards.push(card4);
+    await applyCardUpgradeBonus(card4);
+
+    if (guess === card4.suit) {
+      state.currentStage = 5;
+      state.status = 'Final Stage! Guess the exact card value!';
+      await update(stateRef, state);
+      correctGuessCount++;
+      const newToneId = Date.now(); // ensures uniqueness
+      await update(stateRef, {
+        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
+      });
+      return;
+    } else {
+      await update(stateRef, state);
+      return endTurn('Wrong suit. You lose.', 0);
+    }
+  }
+
+  else if (stage === 5) {
+    if (guess === 'Cash Out') {
+      const playerSnap = await get(playerRef);
+      let multiplier = playerSnap.val().multipliers?.[4] || 20;
+      const bet = state.bet;
+      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
+        multiplier *= 3;
+      }
+      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+
+    }
+
+    const deckSnap5 = await get(deckRef);
+    let deck5 = deckSnap5.val() || [];
+    const card5 = await drawUniqueCard(deck5, state.drawnCards, true);
+    await set(deckRef, deck5);
+    state.drawnCards.push(card5);
+    await applyCardUpgradeBonus(card5);
+
+    const guessVal = guess === 'J' ? 11 : guess === 'Q' ? 12 : guess === 'K' ? 13 : guess === 'A' ? 14 : parseInt(guess);
+    if (card5.value === guessVal) {
+      await update(stateRef, state);
+      const playerSnap = await get(playerRef);
+      let multiplier = playerSnap.val().multipliers?.[5] || 500;
+      const bet = state.bet;
+      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
+        multiplier *= 3;
+      }      correctGuessCount++;
+      const newToneId = Date.now(); // ensures uniqueness
+      await update(stateRef, {
+        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
+      });
+      return endTurn(`Unbelievable! Exact match! You win $${bet * multiplier}`, bet * multiplier);
+    } else {
+      await update(stateRef, state);
+      return endTurn(`Wrong! The card was ${card5.text}. You lose.`, 0);
+    }
+  }
+
+  update(stateRef, { ...state, status: result });
+}
+
+let endTurnAlreadyCalled = false; // global scope
+
+async function endTurn(message, payout) {
+  if (endTurnAlreadyCalled) return;
+  endTurnAlreadyCalled = true;
+
+  // ⏳ Get the latest player data from Firebase
+  const playerSnap = await get(playerRef);
+  const playerData = playerSnap.val();
+  const prevBets = playerData?.betsMade || 0;
+
+  // 🧮 Clamp increment to maxBetsPerPlayer
+  const permBonus  = playerData.betModifierBonus  || 0; // shop modifiers
+  const roundBonus = playerData.roundBetBonus     || 0; // card upgrades
+  const effectiveMax = maxBetsPerPlayer + permBonus + roundBonus;
+  const newBets = Math.min(prevBets + 1, effectiveMax);
+  correctGuessCount = 0;
+
+  if (payout === 0 && stateRef) {
+    const stateSnap = await get(stateRef);
+    const state = stateSnap.val();
+    const failedStage = state?.currentStage;
+
+    if (failedStage && failedStage >= 1 && failedStage <= 5) {
+      const shields = playerData.shields || {};
+      const recoveryPercent = shields[failedStage];
+      if (recoveryPercent) {
+        const recovered = Math.floor(state.bet * (recoveryPercent / 100));
+        localPlayer.balance += recovered;
+        await update(playerRef, { balance: localPlayer.balance });
+        console.log(`Shield activated: recovered $${recovered} from failed Stage ${failedStage}`);
+      }
+    }
+  }
+  // 🤑 Update balance if payout > 0
+  if (payout > 0) {
+    localPlayer.balance += payout;
+    await update(playerRef, { balance: localPlayer.balance });
+  }
+
+  // ✅ Only update betsMade if we're still below the max
+  if (prevBets < effectiveMax) {
+    localPlayer.betsMade = newBets;
+    await update(playerRef, {
+      betsMade: newBets,
+      balance: localPlayer.balance
+    });
+  }
+
+  // Reset All In flag
+  await update(playerRef, { isAllIn: false });
+
+  // 💀 Eliminate if balance drops to 0
+  if (localPlayer.balance <= 0) {
+    localPlayer.eliminated = true;
+    await update(playerRef, { eliminated: true });
+  }
+
+  // 🧼 Clean up visuals
+  document.getElementById('cardArea').innerHTML = '';
+  document.getElementById('guessButtons').innerHTML = '';
+  clearCountdown();
+
+  // 📝 Update status
+  await update(stateRef, {
+    status: `${localPlayer.name}: ${message}`,
+    currentStage: 0
+  });
+
+  // Lose tune
+  if (payout === 0) {
+    const loseToneId = Date.now();
+    await update(stateRef, {
+      loseTones: [...(stateRef.val()?.loseTones || []), { id: loseToneId }]
+    });
+  }
+
+  // 👥 Refresh player UI
+  const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+  const players = playersSnap.val();
+  updatePlayerStats(Object.entries(players).map(([id, data]) => ({
+    id,
+    ...data,
+    isCurrent: id === playerId
+  })));
+  // 🃏 Refill deck if it's empty
+  const deckSnap = await get(deckRef);
+  const currentDeck = deckSnap.val() || [];
+  if (currentDeck.length === 0) {
+    const fullDeck = [];
+    const suits = ['♠', '♥', '♦', '♣'];
+    const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    for (const suit of suits) {
+      for (const val of values) {
+        fullDeck.push({
+          text: val + suit,
+          suit,
+          value: val === 'A' ? 14 : val === 'K' ? 13 : val === 'Q' ? 12 : val === 'J' ? 11 : parseInt(val)
+        });
+      }
+    }
+    fullDeck.sort(() => Math.random() - 0.5);
+    await set(deckRef, fullDeck);
+  }
+  // 🔁 Check if round is complete
+  checkRoundCompletion();
+}
+
+
+
+async function updateGameDOM(state) {
+  document.getElementById('status').textContent = state.status || '';
+  const cardArea = document.getElementById('cardArea');
+  cardArea.innerHTML = '';
+  (state.drawnCards || []).forEach(card => {
+  const upgrades = localPlayer.cardUpgrades || [];
+  const match = upgrades.find(up => up.text === card.text);
+  cardArea.appendChild(createCardDisplay(card, match?.effect));
+});
+
+
+  const guessArea = document.getElementById('guessButtons');
+  guessArea.innerHTML = '';
+  if (state.currentPlayer === playerId && state.currentStage > 0) {
+    getOptionsForStage(state.currentStage).forEach(opt => {
+        const btn = document.createElement('button');
+        if (opt === "Cash Out") {
+          (async () => {
+            const playerSnap = await get(playerRef);
+            const playerData = playerSnap.val();
+            const multiplier = playerData.multipliers?.[state.currentStage - 1] || 1;
+            btn.textContent = `${opt} (${multiplier}x)`;
+          })();
+        } else if (state.currentStage === 5 && ['2','3','4','5','6','7','8','9','10','J','Q','K','A'].includes(opt)) {
+          btn.textContent = opt; // Don't show 500x
+        } else {
+          btn.textContent = opt;
+        }
+
+        btn.onclick = () => {
+        clearCountdown(); // clear timer on manual input
+        handleGuess(opt, state);
+        };
+        guessArea.appendChild(btn);
+    });
+
+    // ⏱ Start 20s timer for this stage
+    startCountdown(20, () => {
+        endTurn("Ran out of time! You lose.", 0);
+    });
+  }
+  displayMultipliers();
+
+}
+
+    function getOptionsForStage(stage) {
+      if (stage === 1) return ['Red', 'Black'];
+      if (stage === 2) return ['Cash Out', 'Higher', 'Lower'];
+      if (stage === 3) return ['Cash Out', 'In-Between', 'Outside'];
+      if (stage === 4) return ['Cash Out','♠', '♥', '♦', '♣'];
+      if (stage === 5) return ['Cash Out', '2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+      return [];
+    }
+
+
+function updatePlayerStats(players) {
+  const container = document.getElementById('playerStats');
+  container.innerHTML = '';
+  const upgradeSummary = [];
+  const maxRounds = Math.max(...players.map(p => p.roundsWon || 0));
+players.forEach((p) => {
+  const isLeader = (p.roundsWon || 0) === maxRounds && maxRounds > 0;
+
+    const box = document.createElement('div');
+    box.className = 'player-box' + (p.isCurrent ? ' active' : '') + (p.eliminated ? ' eliminated' : '');
+    const permBonus  = p.betModifierBonus  || 0;
+    const roundBonus = p.roundBetBonus     || 0;
+    box.innerHTML = `
+    <strong>${p.name} ${isLeader ? '👑' : ''}</strong><br>
+    Balance: $${p.balance}<br>
+    Score: ${p.score}<br>
+    Rounds Won: ${p.roundsWon}<br>
+    Bets Made: ${p.betsMade || 0}/${maxBetsPerPlayer + permBonus + roundBonus}
+    ${p.eliminated ? '<em>Eliminated</em>' : ''}
+    `;
+    container.appendChild(box);
+    const shieldStages = Object.keys(p.shields || {}).join(', ') || 'None';
+    const cardUps = (p.cardUpgrades || []).map(c => `${c.text} (${c.effect})`).join(', ') || 'None';
+
+    upgradeSummary.push(`
+      <strong>${p.name}</strong>: 
+      Bet Modifiers: ${p.betModifierBonus || 0}, 
+      Interest: ${p.interestPercent || 0}%, 
+      Shields: ${shieldStages}, 
+      Card Upgrades: ${cardUps}
+    `);
+  });
+  const upgradesDiv = document.getElementById('playerUpgrades');
+  if (upgradesDiv) {
+    upgradesDiv.innerHTML = `<h3>Player Modifiers & Upgrades</h3>` + 
+      players.map(p => {
+        const history = p.modifierHistory || [];
+        const listItems = history.map(item => `<li>${item}</li>`).join('');
+        return `<strong>${p.name}</strong><ul style="margin-top: 0.25rem; margin-bottom: 1rem;">${listItems || '<li>None</li>'}</ul>`;
+      }).join('');
+  }
+}
+
+
+async function advanceToNextPlayer() {
+  const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+  const players = playersSnap.val();
+  if (!players) return;
+
+  const ids = Object.keys(players);
+  const stateSnap = await get(stateRef);
+  const currentId = stateSnap.val()?.currentPlayer;
+  const currentIndex = ids.indexOf(currentId);
+
+  let nextPlayerId = null;
+
+  for (let i = 1; i <= ids.length; i++) {
+    const candidateIndex = (currentIndex + i) % ids.length;
+    const candidateId = ids[candidateIndex];
+    const staticPlayer = players[candidateId]; // from cache
+    const playerSnap = await get(ref(db, `games/${lobbyCode}/players/${candidateId}`));
+    const dynamicPlayer = playerSnap.val(); // fresh from Firebase
+    const effectiveMax = maxBetsPerPlayer + (dynamicPlayer.betModifierBonus || 0) + (dynamicPlayer.roundBetBonus    || 0);
+    if (dynamicPlayer && !dynamicPlayer.eliminated && dynamicPlayer.betsMade < effectiveMax) {
+      nextPlayerId = candidateId;
+      break;
+    }
+  }
+
+  if (nextPlayerId) {
+    await update(stateRef, { currentPlayer: nextPlayerId });
+
+    // 🔥 Update the player stats UI right away with new current player
+    updatePlayerStats(Object.entries(players).map(([id, data]) => ({
+      id,
+      ...data,
+      isCurrent: id === nextPlayerId
+    })));
+  }
+}
+
+
+function playTurnSound() {
+  const sound = document.getElementById('turnSound');
+  if (sound) {
+    sound.currentTime = 0;
+    sound.play().catch(e => console.warn("Sound playback failed:", e));
+  }
+}
+
+function playLoseTone() {
+  const sound = document.getElementById('loseSound');
+  if (sound) {
+    sound.currentTime = 0;
+    sound.play().catch(e => console.warn("Lose sound playback failed:", e));
+  }
+}
+
+function startCountdown(seconds, onExpire) {
+  clearCountdown();
+
+  const bar = document.getElementById("timerBar");
+  const container = document.getElementById("timerBarContainer");
+
+  bar.style.width = "100%";
+  container.style.display = "block";
+
+  let timeLeft = seconds;
+  const total = seconds;
+
+  countdownInterval = setInterval(() => {
+    timeLeft--;
+    const percent = (timeLeft / total) * 100;
+    bar.style.width = percent + "%";
+  }, 1000);
+
+  countdownTimeout = setTimeout(() => {
+    clearCountdown();
+    onExpire();
+  }, seconds * 1000);
+}
+
+let lastCardOffered = null;
+
+async function showShopOptions(isWinner, playerData) {
+  const shop = document.getElementById('shopSection');
+  if (!shop) return;
+
+  shop.classList.remove('hidden');
+  document.getElementById('playerTokens').textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
+
+  // 🔐 Shared bet modifiers from Firebase
+  const stateSnap = await get(stateRef);
+  const state = stateSnap.val();
+  const sharedNames = state.sharedBetModifiers || [];
+
+  const limit = isWinner ? sharedNames.length : sharedNames.length - 1;
+  const shownNames = sharedNames.slice(0, limit);
+
+  // 🎯 Logic map
+  const betModifiersMap = {
+    "Bonus Bets": {
+      name: "Bonus Bets",
+      desc: "+2 bets per round",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val();
+        const currentBonus = data.betModifierBonus || 0;
+        const currentTokens = data.purchaseTokens || 0;
+        if (currentTokens <= 0) return alert("You don't have enough tokens.");
+
+        // Apply the bonus
+        await update(playerRef, {
+          betModifierBonus: currentBonus + 2,
+          purchaseTokens: currentTokens - 1
+        });
+        alert("You will now be able to make 2 more bets this round!");
+
+        // Update history
+        const history = data.modifierHistory || [];
+        history.push("+2 bets per round");
+
+        await update(playerRef, {
+          modifierHistory: history
+        });
+      }
+    },
+    "Super Multiplier": {
+      name: "Super Multiplier",
+      desc: "Increase all win multipliers by x1.25, -2 bets",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val();
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+        const oldMultipliers = data.multipliers || { 1: 2, 2: 3, 3: 4, 4: 20, 5: 500 };
+        const newMultipliers = {};
+        for (const [stage, mult] of Object.entries(oldMultipliers)) {
+          newMultipliers[stage] = Math.round(mult * 1.25);
+        }
+        const currentBonus = data.betModifierBonus || 0;
+        await update(playerRef, {
+          multipliers: newMultipliers,
+          betModifierBonus: currentBonus - 2,
+          purchaseTokens: tokens - 1
+        });
+        alert("Multipliers increased by x1.25! You lose 2 bets.");
+
+        const history = data.modifierHistory || [];
+        history.push("Increase all win multipliers by x1.25, -2 bets");
+
+        await update(playerRef, {
+          purchaseTokens: tokens - 1,
+          modifierHistory: history
+        });
+
+      }
+    },
+    "All In Bonus": {
+      name: "All In Bonus",
+      desc: "Going all-in triples your multiplier for that bet",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val();
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        const history = data.modifierHistory || [];
+        history.push("Going all-in triples your multiplier for that bet");
+
+        await update(playerRef, {
+          allInBonus: true,
+          purchaseTokens: tokens - 1,
+          modifierHistory: history
+        });
+
+        alert("If you go all in, your multiplier will be tripled!");
+      }
+    },
+    "Bonus Interest": {
+      name: "Bonus Interest",
+      desc: "Earn +10% of your balance at the start of your turn",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val();
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        const currentInterest = data.interestPercent || 0;
+        const newInterest = currentInterest + 10;
+
+        await update(playerRef, {
+          interestPercent: newInterest,
+          purchaseTokens: tokens - 1
+        });
+
+        alert(`You will now earn +${newInterest}% interest at the start of each turn!`);
+
+        const history = data.modifierHistory || [];
+        history.push("+10% Bonus interest");
+
+        await update(playerRef, {
+          interestPercent: newInterest,
+          purchaseTokens: tokens - 1,
+          modifierHistory: history
+        });
+
+      }
+    },
+
+    ...[1, 2, 3, 4, 5].reduce((map, stage) => {
+      map[`Stage ${stage} Boost`] = {
+        name: `Stage ${stage} Boost`,
+        desc: `Increase Stage ${stage} multiplier by +1`,
+        apply: async () => {
+          const snap = await get(playerRef);
+          const data = snap.val();
+          const tokens = data.purchaseTokens || 0;
+          if (tokens <= 0) return alert("Not enough tokens.");
+          const mults = { 1: 2, 2: 3, 3: 4, 4: 20, 5: 500, ...(data.multipliers || {}) };
+          mults[stage] = Math.floor(mults[stage] + 1);
+          await update(playerRef, { multipliers: mults, purchaseTokens: tokens - 1 });
+          alert(`Stage ${stage} multiplier is now ${mults[stage]}×`);
+
+          const history = data.modifierHistory || [];
+          history.push(`Increase Stage ${stage} multiplier by +1`);
+
+          await update(playerRef, {
+            purchaseTokens: tokens - 1,
+            modifierHistory: history
+          });
+
+        }
+      };
+      return map;
+    }, {}),
+
+    ...Object.fromEntries([1,2,3,4,5].map(stage => {
+      return [`Stage ${stage} Shield`, {
+        name: `Stage ${stage} Shield`,
+        desc: `Retain 25% of your bet if you fail on Stage ${stage}`,
+        apply: async () => {
+          const snap = await get(playerRef);
+          const data = snap.val();
+          const tokens = data.purchaseTokens || 0;
+          if (tokens <= 0) return alert("You don't have enough tokens.");
+
+          const shields = data.shields || {};
+          shields[stage] = 25; // percent
+
+          await update(playerRef, {
+            shields,
+            purchaseTokens: tokens - 1
+          });
+
+          alert(`You are now protected on Stage ${stage}. You will recover 25% of your bet if you fail.`);
+
+          const history = data.modifierHistory || [];
+          history.push(`Retain 25% of your bet if you fail on Stage ${stage}`);
+
+          await update(playerRef, {
+            purchaseTokens: tokens - 1,
+            modifierHistory: history
+          });
+
+        }
+      }];
+    })),
+
+  };
+
+  // 🛠️ Render bet modifiers
+  const betDiv = document.getElementById('betModifiers');
+  betDiv.innerHTML = '<div style="width: 100%; text-align: center; font-weight: bold; margin-bottom: 0.5rem;">Bet Modifiers</div>';
+    shownNames.forEach(name => {
+    const mod = betModifiersMap[name];
+    const box = document.createElement('div');
+    box.className = 'shop-item';
+    box.innerHTML = `
+      <h4>🛠️ ${mod.name}</h4>
+      <p>${mod.desc}</p>
+    `;
+
+    const btn = document.createElement('button');
+    btn.innerText = 'Purchase';
+    btn.onclick = async () => {
+      if (playerData.purchaseTokens > 0) {
+        await mod.apply();
+        const newTokens = playerData.purchaseTokens - 1;
+        await update(playerRef, { purchaseTokens: newTokens });
+        playerData.purchaseTokens = newTokens;
+        btn.disabled = true;
+        btn.textContent = 'Purchased';
+        document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
+      }
+    };
+
+    box.appendChild(btn);
+    betDiv.appendChild(box);
+  });
+
+  // 🃏 Card Upgrade Section
+  const cardDiv = document.getElementById('cardUpgradeArea');
+  cardDiv.innerHTML = '<strong>Card Upgrade</strong>';
+
+  const card = playerData.offeredCard || getRandomCardFromDeck();
+
+  const upgradeFlex = document.createElement('div');
+  upgradeFlex.style.display = 'flex';
+  upgradeFlex.style.flexWrap = 'wrap';
+  upgradeFlex.style.justifyContent = 'center';
+  upgradeFlex.style.alignItems = 'stretch';
+  upgradeFlex.style.gap = '1rem';
+  upgradeFlex.style.marginTop = '0.5rem';
+  upgradeFlex.style.width = '100%';
+
+  (playerData.offeredEffects || ['+1 bet']).forEach(effectText => {
+    const box = document.createElement('div');
+    box.className = 'shop-item';
+    box.style.flex = '1 1 150px';
+
+    const cardEl = createCardDisplay(card, effectText);
+    cardEl.style.margin = '0 auto';
+    box.appendChild(cardEl);
+
+    const desc = document.createElement('p');
+    if (effectText === '+1 bet') desc.textContent = '+1 bet if drawn';
+    else if (effectText === 'bonus_cash_25') desc.textContent = 'Gain 25% of bet';
+    else if (effectText === 'remove_card') desc.textContent = 'Remove this card from your deck';
+
+    box.appendChild(desc);
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Upgrade';
+    const hasTokens = (playerData.purchaseTokens || 0) > 0;
+    if (!hasTokens) btn.disabled = true;
+
+    btn.onclick = async () => {
+      const snap = await get(playerRef);
+      const latest = snap.val();
+      const tokens = latest.purchaseTokens || 0;
+
+      if (tokens <= 0) return alert("You don't have any tokens left!");
+
+      let upgrades = latest.cardUpgrades || [];
+      upgrades = upgrades.filter(c => c.text !== card.text);
+      const history = latest.modifierHistory || [];
+
+      if (effectText === 'remove_card') {
+        // No upgrade added—removal is the upgrade
+        upgrades.push({ text: card.text, effect: 'remove_card' });
+        history.push(`Remove card ${card.text} from deck`);
+      } else {
+        upgrades.push({ text: card.text, effect: effectText });
+        history.push(`Upgrade ${card.text}: ${effectText}`);
+      }
+
+      await update(playerRef, {
+        cardUpgrades: upgrades,
+        purchaseTokens: tokens - 1,
+        modifierHistory: history
+      });
+
+      btn.disabled = true;
+      btn.textContent = 'Upgraded';
+      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+    };
+
+    box.appendChild(btn);
+    upgradeFlex.appendChild(box);
+  });
+
+
+  cardDiv.appendChild(upgradeFlex);
+}
+
+
+// Utility for drawing a random card from the full deck
+function getRandomCardFromDeck() {
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  const suit = suits[Math.floor(Math.random() * suits.length)];
+  const value = values[Math.floor(Math.random() * values.length)];
+  const numeric = value === 'A' ? 14 : value === 'K' ? 13 : value === 'Q' ? 12 : value === 'J' ? 11 : parseInt(value);
+  return { text: value + suit, suit, value: numeric };
+}
+
+function clearCountdown() {
+  clearInterval(countdownInterval);
+  clearTimeout(countdownTimeout);
+  const bar = document.getElementById("timerBar");
+  const container = document.getElementById("timerBarContainer");
+  bar.style.width = "0%";
+  container.style.display = "none";
+}
+
+function playSuccessTone() {
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const melody = [329.63, 369.99, 392.00, 440.00, 659.25, 783.99]; // E F# G A E5 G5
+  const notesToPlay = melody.slice(0, Math.min(correctGuessCount, melody.length));
+  const duration = 0.18;
+
+  notesToPlay.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * duration);
+    osc.type = 'triangle';
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime + i * duration);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (i + 1) * duration);
+
+    osc.connect(gainNode).connect(audioCtx.destination);
+    osc.start(audioCtx.currentTime + i * duration);
+    osc.stop(audioCtx.currentTime + (i + 1) * duration);
+  });
+}
+
+async function resetAllPlayers(players) {
+  for (const id of Object.keys(players)) {
+    await update(ref(db, `games/${lobbyCode}/players/${id}`), {
+      balance: 100,
+      betsMade: 0,
+      eliminated: false,
+      isRoundWinner: false, // 🧹 clear winner flag
+      roundBetBonus: 0
+    });
+  }
+
+  // Sync local copy
+  if (players[playerId]) {
+    localPlayer.balance = 100;
+    localPlayer.betsMade = 0;
+    localPlayer.eliminated = false;
+  }
+}
+
+async function reshuffleDeck() {
+  const fullDeck = [];
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  for (const suit of suits) {
+    for (const val of values) {
+      fullDeck.push({
+        text: val + suit,
+        suit,
+        value: val === 'A' ? 14 : val === 'K' ? 13 : val === 'Q' ? 12 : val === 'J' ? 11 : parseInt(val)
+      });
+    }
+  }
+  fullDeck.sort(() => Math.random() - 0.5);
+  await set(deckRef, fullDeck);
+}
+
+async function grantTokenAndShowShop(winners) {
+  const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+  const players = playersSnap.val();
+
+  // 🧠 Generate shared random modifiers for this shop session
+  const activeModifierKeys = [
+  "Bonus Bets", "Super Multiplier", "Bonus Interest",
+  "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost",
+  "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
+  "All In Bonus"
+];
+
+const everymodifierkey = [
+  "Bonus Bets", "Super Multiplier", "Bonus Interest",
+  "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
+  "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
+  "All In Bonus"
+];
+
+  const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
+  const sharedBetModifiers = shuffled.slice(0, 4); // Change to 4+ if you want more choices
+
+  await update(stateRef, { sharedBetModifiers }); // 🔐 Save in Firebase so all players use same base
+
+
+  for (const [id, data] of Object.entries(players)) {
+    const isWinner = winners.some(([winnerId]) => winnerId === id);
+    const newTokens = (data.purchaseTokens || 0) + 1;
+
+    const upgradeCard = getRandomCardFromDeck();
+    const possibleEffects = ['+1 bet', 'bonus_cash_25', 'remove_card'];
+    const effectsToShow = isWinner ? 3 : 2;
+    const randomEffects = [...possibleEffects].sort(() => Math.random() - 0.5).slice(0, effectsToShow);
+
+    await update(ref(db, `games/${lobbyCode}/players/${id}`), {
+      purchaseTokens: newTokens,
+      showShop: true,
+      isRoundWinner: isWinner,
+      offeredCard: upgradeCard,
+      offeredEffects: randomEffects
+    });
+  }
+}
+
+async function checkRoundCompletion() {
+  const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+  const players = playersSnap.val();
+  const activePlayers = Object.values(players).filter(p => !p.eliminated);
+  const nonEliminated = activePlayers.filter(p => p.balance > 0);
+
+  const isSoloMode = Object.keys(players).length === 1;
+  const isDefaultWin = Object.keys(players).length > 1 && nonEliminated.length === 1;
+
+  const currentStateSnap = await get(stateRef);
+  const currentState = currentStateSnap.val();
+  const currentMaxBets = currentState?.maxBetsPerPlayer || 10;
+
+  // SOLO MODE
+  if (isSoloMode) {
+    const soloPlayer = Object.values(players)[0];
+    const snap = await get(playerRef);
+    const data = snap.val();
+    const bonus = data.betModifierBonus || 0;
+    const effectiveMax = maxBetsPerPlayer + bonus;
+
+    if (soloPlayer.betsMade < effectiveMax) return;
+
+    const winners = [[playerId, soloPlayer]];
+    await update(ref(db, `games/${lobbyCode}/players/${playerId}`), {
+      roundsWon: (soloPlayer.roundsWon || 0) + 1
+    });
+
+    await resetAllPlayers(players);
+    await reshuffleDeck();
+    await grantTokenAndShowShop(winners);
+    const currentStateSnap2 = await get(stateRef);
+    const stateObj = currentStateSnap2.val() || {};
+    await update(stateRef, { status: stateObj.status + ' ' });
+    await set(stateRef, {
+      gameStarted: true,
+      currentPlayer: playerId,
+      currentStage: 0,
+      drawnCards: [],
+      status: `Waiting for ${soloPlayer.name} to start their turn.`,
+      maxBetsPerPlayer: currentMaxBets
+    });
+
+    return;
+  }
+
+  // DEFAULT WIN
+  if (isDefaultWin) {
+    const lastPlayerId = Object.entries(players).find(([_, p]) => p.balance > 0 && !p.eliminated)[0];
+    const lastPlayer = players[lastPlayerId];
+    const winners = [[lastPlayerId, lastPlayer]];
+
+    await update(ref(db, `games/${lobbyCode}/players/${lastPlayerId}`), {
+      roundsWon: (lastPlayer.roundsWon || 0) + 1
+    });
+
+    alert(`${lastPlayer.name} has won the round by default!`);
+
+    await resetAllPlayers(players);
+    await reshuffleDeck();
+
+    // 🧠 Set game state *before* granting tokens/shop
+    await set(stateRef, {
+      gameStarted: true,
+      currentPlayer: lastPlayerId,
+      currentStage: 0,
+      drawnCards: [],
+      status: `Waiting for ${lastPlayer.name} to start their turn.`,
+      maxBetsPerPlayer: currentMaxBets
+    });
+
+    // 🪙 This now triggers correctly when state.currentStage is already 0
+    await grantTokenAndShowShop(winners);
+    const currentStateSnap2 = await get(stateRef);
+    const stateObj = currentStateSnap2.val() || {};
+    await update(stateRef, { status: stateObj.status + ' ' });
+    return;
+  }
+
+
+// CONTINUE IF ANYONE HAS BETS LEFT
+const allDone = activePlayers.every(p => {
+  const permBonus = p.betModifierBonus || 0;
+  const roundBonus = p.roundBetBonus || 0;
+  const effectiveMax = maxBetsPerPlayer + permBonus + roundBonus;
+  return p.betsMade >= effectiveMax;
+});
+if (!allDone) return advanceToNextPlayer();
+
+  // NORMAL WIN SCENARIO
+  const maxBalance = Math.max(...activePlayers.map(p => p.balance));
+  const winners = Object.entries(players).filter(([_, p]) => p.balance === maxBalance);
+
+  for (const [id, p] of winners) {
+    await update(ref(db, `games/${lobbyCode}/players/${id}`), {
+      roundsWon: (p.roundsWon || 0) + 1
+    });
+  }
+
+  await resetAllPlayers(players);
+  await reshuffleDeck();
+  await grantTokenAndShowShop(winners);
+  const currentStateSnap2 = await get(stateRef);
+  const stateObj = currentStateSnap2.val() || {};
+  await update(stateRef, { status: stateObj.status + ' ' });
+
+  const firstPlayerId = Object.keys(players)[0];
+  await set(stateRef, {
+    gameStarted: true,
+    currentPlayer: firstPlayerId,
+    currentStage: 0,
+    drawnCards: [],
+    status: `Waiting for ${players[firstPlayerId].name} to start their turn.`,
+    maxBetsPerPlayer: currentMaxBets
+  });
+}
+
+
+
+</script>
+
+</body>
+</html>
