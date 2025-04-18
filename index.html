@@ -66,6 +66,8 @@
     .card-area { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin: 1rem 0; }
     .card { width: 100px; height: 150px; border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
     .card.red { color: red; }
+    .card.blue {color: #003bdf;}
+
     .card.black { color: black; }
     .controls, .betting, .guesses { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
     .controls button, .guesses button { padding: 0.8rem 1.5rem; font-size: 1.1rem; border: none; border-radius: 5px; background: #ff4b2b; color: white; cursor: pointer; }
@@ -111,6 +113,9 @@
 
   .glowing-gold {
     box-shadow: 0 0 12px 4px gold;
+  }
+  .glowing-orange {
+    box-shadow: 0 0 12px 4px rgb(212, 115, 3);
   }
 
   #betModifiers,
@@ -178,7 +183,6 @@
       </div>
   </div>
 <audio id="turnSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
-<audio id="loseSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
@@ -259,7 +263,10 @@ window.addEventListener("DOMContentLoaded", () => {
     // Only declare playerSnap once
     const playerSnap = await get(playerRef);
     const bet = parseInt(document.getElementById('betAmount').value);
-
+    // ─── Snow‑baller support ───────────────────────────
+    const prevBalance = playerSnap.val().balance;
+    // ─────────────────────────────────────────────────────
+    
     if (bet > playerSnap.val().balance || bet <= 0) return alert('Invalid bet amount.');
     
     const newBalance = playerSnap.val().balance - bet;
@@ -267,7 +274,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const isAllIn = bet === playerSnap.val().balance;
     await update(playerRef, {
       balance: newBalance,
-      isAllIn: isAllIn
+      isAllIn,
+      lastBalanceBeforeBet: prevBalance    // ← store for Snow‑baller
     });
 
     localPlayer.balance = newBalance;
@@ -438,12 +446,11 @@ window.addEventListener("DOMContentLoaded", () => {
             }
           });
 
-          if (!window.playedLoseToneIds) window.playedLoseToneIds = new Set();
-
-          (state.loseTones || []).forEach(tone => {
-            if (!window.playedLoseToneIds.has(tone.id)) {
-              window.playedLoseToneIds.add(tone.id);
-              playLoseTone();
+          if (!window.playedFailToneIds) window.playedFailToneIds = new Set();
+          (snapshot.val().failureTones || []).forEach(tone => {
+            if (!window.playedFailToneIds.has(tone.id)) {
+              window.playedFailToneIds.add(tone.id);
+              playFailureTone();
             }
           });
 
@@ -500,9 +507,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // Determine max bets
   if (playerCount >= 6) maxBetsPerPlayer = 3;
-  else if (playerCount >= 3) maxBetsPerPlayer = 7;
+  else if (playerCount >= 3) maxBetsPerPlayer = 6;
   else if (playerCount >= 4) maxBetsPerPlayer = 5;
-
+  else if (playerCount >= 5) maxBetsPerPlayer = 4;
 
   else maxBetsPerPlayer = 10;
 
@@ -544,15 +551,33 @@ async function applyCardUpgradeBonus(card) {
 
     console.log(`Upgrade applied for ${card.text}: gained $${bonus}`);
   }
+  
   if (match.effect === 'remove_card') {
     console.log(`Upgrade applied for ${card.text}: card removed from deck`);
     // No effect to apply at draw time, since card should be filtered from deck
+  }
+
+  // ─── New: 10% of current balance on draw ─────────────────────────────────
+  if (match.effect === 'bonus_cash_10') {
+    // fetch fresh balance
+    const snap = await get(playerRef);
+    const pdata = snap.val() || {};
+    const bonus = Math.floor(pdata.balance * 0.10);
+
+    localPlayer.balance += bonus;
+    await update(playerRef, { balance: localPlayer.balance });
+    console.log(`Upgrade applied for ${card.text}: gained $${bonus} (10% of balance)`);
   }
 }
 
 function createCardDisplay(card, effect = null) {
   const el = document.createElement('div');
-  el.className = 'card ' + ((card.suit === '♥' || card.suit === '♦') ? 'red' : 'black');
+  // new: red for ♥♦, blue for ☾★, else black
+  let colorClass;
+  if (card.suit === '♥' || card.suit === '♦')      colorClass = 'red';
+  else if (card.suit === '☾' || card.suit === '★') colorClass = 'blue';
+  else                                             colorClass = 'black';
+  el.className = `card ${colorClass}`;
 
   if (effect === '+1 bet') {
     el.style.boxShadow = '0 0 12px 4px limegreen'; // green glow
@@ -560,6 +585,8 @@ function createCardDisplay(card, effect = null) {
     el.style.boxShadow = '0 0 12px 4px gold';
   } else if (effect === 'remove_card') {
     el.style.boxShadow = '0 0 12px 4px red'; // red glow
+  } else if (effect === 'bonus_cash_10') {
+      el.style.boxShadow = '0 0 12px 4px orange'; // orange glow for 10% balance
   }
 
   el.textContent = card.text;
@@ -567,243 +594,323 @@ function createCardDisplay(card, effect = null) {
 }
 
 
-async function drawUniqueCard(deck, drawnCards, excludeSameValue = false) {
-  const snap = await get(playerRef);
-  const playerData = snap.val();
-  const removedCards = (playerData.cardUpgrades || [])
-    .filter(up => up.effect === 'remove_card')
-    .map(up => up.text);
+async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
+  // 1️⃣ Load the shared deck
+  const deckSnap   = await get(deckRef);
+  const globalDeck = deckSnap.val() || [];
 
-  let card = null;
-  let retries = deck.length;
+  // 2️⃣ Load this player’s modifiers
+  const playerSnap = await get(playerRef);
+  const data       = playerSnap.val() || {};
 
-  while (retries-- > 0) {
-    const attempt = deck.pop();
+  // 3️⃣ Build the in‑memory pool starting from the shared deck
+  const pool = [...globalDeck];
 
-    const isDuplicateCard = drawnCards.some(c => c.text === attempt.text);
-    const isDuplicateValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
-    const isRemoved = removedCards.includes(attempt.text);
-
-    if (!isDuplicateCard && !isDuplicateValue && !isRemoved) {
-      card = attempt;
-      break;
-    } else {
-      deck.unshift(attempt); // put it back
-      deck.sort(() => Math.random() - 0.5); // reshuffle slightly
+  // ─── Blue Suits ───────────────────────────────
+  if (data.addBlueSuits) {
+    const blueSuits = ['☾','★'];
+    const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    for (const suit of blueSuits) {
+      for (const v of values) {
+        const num = v === 'A' ? 14
+                  : v === 'K' ? 13
+                  : v === 'Q' ? 12
+                  : v === 'J' ? 11
+                  : parseInt(v, 10);
+        pool.push({ text: v + suit, suit, value: num, _isBlue: true });
+      }
     }
+  }
+
+  // ─── Ace & Two stacking ───────────────────────
+  const boostCount = data.aceTwoBoostCount || 0;
+  if (boostCount > 0) {
+    // figure out which suits apply
+    let suits = ['♠','♥','♦','♣'];
+    if (data.addBlueSuits)          suits.push('☾','★');
+    if (data.removeDiamondsClubs)   suits = suits.filter(s => s !== '♦' && s !== '♣');
+
+    // for each purchase, add one extra Ace & 2 of each suit
+    for (let i = 0; i < boostCount; i++) {
+      for (const suit of suits) {
+        pool.push({ text: 'A' + suit, suit, value: 14, _isBlue: true });
+        pool.push({ text: '2' + suit, suit, value: 2,  _isBlue: true });
+      }
+    }
+  }
+
+  // ─── Draw a random card with filters ──────────
+  let card  = null;
+  let tries = pool.length;
+  while (tries-- && !card) {
+    const idx     = Math.floor(Math.random() * pool.length);
+    const attempt = pool.splice(idx, 1)[0];
+
+    // duplicate exact card?
+    const dupCard  = drawnCards.some(c => c.text === attempt.text);
+    // duplicate value when excludeSameValue is on?
+    const dupValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
+    // remove ♦/♣ if the player bought “Remove Diamonds & Clubs”
+    const removeSuit = data.removeDiamondsClubs
+                    && (attempt.suit === '♦' || attempt.suit === '♣');
+    // remove J/Q/K if the player has any Faceless purchases
+    const removeFace = (data.facelessCount || 0) > 0
+                    && (attempt.value === 11 || attempt.value === 12 || attempt.value === 13);
+
+    if (dupCard || dupValue || removeSuit || removeFace) continue;
+    card = attempt;
+  }
+
+  // 5️⃣ If it came from the shared deck (not a synthetic _isBlue card), remove it there
+  if (card && !card._isBlue) {
+    const newGlobal = globalDeck.filter(c => c.text !== card.text);
+    await set(deckRef, newGlobal);
   }
 
   return card;
 }
 
 
+
+
 async function handleGuess(guess, state) {
   const stage = state.currentStage;
-  let result = '';
-  const bet = state.bet;
-  const playerPath = `games/${lobbyCode}/players/${playerId}`;
+  const bet   = state.bet;
 
-  if (stage === 1) {
-    const deckSnap = await get(deckRef);
-    const deck = deckSnap.val() || [];
-
-    const card = deck.pop();
-    if (!card) {
-      return endTurn('Deck is empty. Round ending early.', 0);
-    }
-
-    const isRed = card.suit === '♥' || card.suit === '♦';
-    if ((guess === 'Red' && isRed) || (guess === 'Black' && !isRed)) {
-      state.drawnCards = [card];
-      await applyCardUpgradeBonus(card);
-
-      state.currentStage = 2;
-      await set(deckRef, deck);
-      await update(stateRef, {
-        ...state,
-        status: 'Correct! Cash out 2x or pick Higher/Lower'
-      });
-      correctGuessCount++;
-      const newToneId = Date.now(); // ensures uniqueness
-      await update(stateRef, {
-        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
-      });
-      return;
-    } else {
-      state.drawnCards = [card];
-      await applyCardUpgradeBonus(card);
-
-      await set(deckRef, deck);
-      await update(stateRef, state);
-      return endTurn('Wrong guess. You lose.', 0);
-    }
+  // Helper: emit a success tone
+  async function emitSuccess() {
+    correctGuessCount++;
+    const toneId = Date.now();
+    const snap   = await get(stateRef);
+    const curr   = snap.val() || {};
+    await update(stateRef, {
+      successTones: [...(curr.successTones || []), { id: toneId, count: correctGuessCount }]
+    });
   }
 
+  // Helper: emit a failure tone
+  async function emitFailure() {
+    const toneId = Date.now();
+    const snap   = await get(stateRef);
+    const curr   = snap.val() || {};
+    await update(stateRef, {
+      failureTones: [...(curr.failureTones || []), { id: toneId }]
+    });
+  }
+
+  // ─── Stage 1 ────────────────────────────────────────────────────────────────
+  if (stage === 1) {
+    const card = await drawUniqueCard([], false);
+    if (!card) return endTurn('Deck is empty. Round ending early.', 0);
+    await applyCardUpgradeBonus(card);
+
+    const isRed   = card.suit === '♥' || card.suit === '♦';
+    const isBlack = card.suit === '♠' || card.suit === '♣';
+    const isBlue  = card.suit === '☾' || card.suit === '★';
+
+    await update(stateRef, { drawnCards: [card] });
+
+    if ((guess === 'Red'   && isRed) ||
+        (guess === 'Black' && isBlack) ||
+        (guess === 'Blue'  && isBlue)) {
+      state.currentStage = 2;
+      state.status       = 'Correct! Cash out 2× or pick Higher/Lower';
+      await update(stateRef, state);
+      await emitSuccess();
+    } else {
+      await emitFailure();
+      return endTurn('Wrong guess. You lose.', 0);
+    }
+    return;
+  }
+
+  // ─── Stage 2 ────────────────────────────────────────────────────────────────
   if (stage === 2) {
     if (guess === 'Cash Out') {
+      // remove first card then compute payout
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
       deck = deck.filter(c => c.text !== state.drawnCards[0].text);
       await set(deckRef, deck);
       state.drawnCards = [];
       await update(stateRef, state);
-      const playerSnap = await get(playerRef);
-      let multiplier = playerSnap.val().multipliers?.[1] || 2;
-      const bet = state.bet;
-      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
-        multiplier *= 3;
-      }
-      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
 
+      // ─── Snow‑baller dynamic multiplier ─────────────────────────
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
+        ? (pdata.multipliers?.[1] || 2) + (bet / pdata.lastBalanceBeforeBet)
+        : (pdata.multipliers?.[1] || 2);
+      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
+      // ─────────────────────────────────────────────────────────────
+
+      return endTurn(
+        `Cashed out $${Math.floor(bet * multiplier)}`,
+        Math.floor(bet * multiplier)
+      );
     }
 
-    const prev = state.drawnCards[0].value;
-    const deckSnap2 = await get(deckRef);
-    let deck2 = deckSnap2.val() || [];
-    const card2 = await drawUniqueCard(deck2, state.drawnCards, true);
-    await set(deckRef, deck2);
-    state.drawnCards.push(card2);
-    await applyCardUpgradeBonus(card2);
-    const curr = card2.value;
+    const prevValue = state.drawnCards[0].value;
+    const card2     = await drawUniqueCard(state.drawnCards, true);
+    if (!card2) return endTurn('Deck is empty. Round ending early.', 0);
 
-    if ((guess === 'Higher' && curr > prev) || (guess === 'Lower' && curr < prev)) {
-      result = 'Correct! Cash out 3x or pick In-Between/Outside';
+    await applyCardUpgradeBonus(card2);
+    state.drawnCards.push(card2);
+
+    const curr = card2.value;
+    if ((guess === 'Higher' && curr > prevValue) ||
+        (guess === 'Lower'  && curr < prevValue)) {
       state.currentStage = 3;
-      correctGuessCount++;
-      const newToneId = Date.now(); // ensures uniqueness
-      await update(stateRef, {
-        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
-      });
-    } else {
+      state.status       = 'Correct! Cash out 3× or pick In-Between/Outside';
       await update(stateRef, state);
+      await emitSuccess();
+    } else {
+      await update(stateRef, { drawnCards: state.drawnCards });
+      await emitFailure();
       return endTurn('Wrong guess. You lose.', 0);
     }
+    return;
   }
 
-  else if (stage === 3) {
+  // ─── Stage 3 ────────────────────────────────────────────────────────────────
+  if (stage === 3) {
     if (guess === 'Cash Out') {
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
-      const usedCards = state.drawnCards.map(c => c.text);
-      deck = deck.filter(c => !usedCards.includes(c.text));
+      const used = state.drawnCards.map(c => c.text);
+      deck = deck.filter(c => !used.includes(c.text));
       deck.sort(() => Math.random() - 0.5);
       await set(deckRef, deck);
+
       state.drawnCards = [];
       await update(stateRef, state);
-      const playerSnap = await get(playerRef);
-      let multiplier = playerSnap.val().multipliers?.[2] || 3;
-      const bet = state.bet;
-      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
-        multiplier *= 3;
-      }      
-      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
 
+      // ─── Snow‑baller dynamic multiplier ─────────────────────────
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
+        ? (pdata.multipliers?.[2] || 3) + (bet / pdata.lastBalanceBeforeBet)
+        : (pdata.multipliers?.[2] || 3);
+      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
+      // ─────────────────────────────────────────────────────────────
+
+      return endTurn(
+        `Cashed out $${Math.floor(bet * multiplier)}`,
+        Math.floor(bet * multiplier)
+      );
     }
 
-    const deckSnap3 = await get(deckRef);
-    let deck3 = deckSnap3.val() || [];
-    const card3 = await drawUniqueCard(deck3, state.drawnCards, true);
-    await set(deckRef, deck3);
-    state.drawnCards.push(card3);
-    await applyCardUpgradeBonus(card3);
+    const card3 = await drawUniqueCard(state.drawnCards, true);
+    if (!card3) return endTurn('Deck is empty. Round ending early.', 0);
 
-    const [v1, v2] = [state.drawnCards[0].value, state.drawnCards[1].value];
-    const val = card3.value;
-    if ((guess === 'In-Between' && val > Math.min(v1, v2) && val < Math.max(v1, v2)) ||
-        (guess === 'Outside' && (val < Math.min(v1, v2) || val > Math.max(v1, v2)))) {
-      result = 'Correct! Cash out 4x or pick suit';
+    await applyCardUpgradeBonus(card3);
+    state.drawnCards.push(card3);
+
+    const [v1, v2]   = [state.drawnCards[0].value, state.drawnCards[1].value];
+    const inBetween  = card3.value > Math.min(v1, v2) && card3.value < Math.max(v1, v2);
+
+    if ((guess === 'In-Between' && inBetween) ||
+        (guess === 'Outside'    && !inBetween)) {
       state.currentStage = 4;
-      correctGuessCount++;
-      const newToneId = Date.now(); // ensures uniqueness
-      await update(stateRef, {
-        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
-      });
-    } else {
+      state.status       = 'Correct! Cash out 4× or pick Suit';
       await update(stateRef, state);
+      await emitSuccess();
+    } else {
+      await update(stateRef, { drawnCards: state.drawnCards });
+      await emitFailure();
       return endTurn('Wrong guess. You lose.', 0);
     }
+    return;
   }
 
-  else if (stage === 4) {
+  // ─── Stage 4 ────────────────────────────────────────────────────────────────
+  if (stage === 4) {
     if (guess === 'Cash Out') {
-      const deckSnap = await get(deckRef);
-      const deck = deckSnap.val() || [];
-      deck.sort(() => Math.random() - 0.5);
-      await set(deckRef, deck);
-      const playerSnap = await get(playerRef);
-      let multiplier = playerSnap.val().multipliers?.[3] || 4;
-      const bet = state.bet;
-      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
-        multiplier *= 3;
-      }      
-      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+      // no removal needed
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
+        ? (pdata.multipliers?.[3] || 4) + (bet / pdata.lastBalanceBeforeBet)
+        : (pdata.multipliers?.[3] || 4);
+      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
 
+      return endTurn(
+        `Cashed out $${Math.floor(bet * multiplier)}`,
+        Math.floor(bet * multiplier)
+      );
     }
 
-    const deckSnap4 = await get(deckRef);
-    let deck4 = deckSnap4.val() || [];
-    const card4 = await drawUniqueCard(deck4, state.drawnCards, true);
-    await set(deckRef, deck4);
-    state.drawnCards.push(card4);
+    const card4 = await drawUniqueCard(state.drawnCards, true);
+    if (!card4) return endTurn('Deck is empty. Round ending early.', 0);
+
     await applyCardUpgradeBonus(card4);
+    state.drawnCards.push(card4);
 
     if (guess === card4.suit) {
       state.currentStage = 5;
-      state.status = 'Final Stage! Guess the exact card value!';
+      state.status       = 'Final Stage! Guess the exact card value!';
       await update(stateRef, state);
-      correctGuessCount++;
-      const newToneId = Date.now(); // ensures uniqueness
-      await update(stateRef, {
-        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
-      });
-      return;
+      await emitSuccess();
     } else {
-      await update(stateRef, state);
+      await update(stateRef, { drawnCards: state.drawnCards });
+      await emitFailure();
       return endTurn('Wrong suit. You lose.', 0);
     }
+    return;
   }
 
-  else if (stage === 5) {
+  // ─── Stage 5 ────────────────────────────────────────────────────────────────
+  if (stage === 5) {
     if (guess === 'Cash Out') {
-      const playerSnap = await get(playerRef);
-      let multiplier = playerSnap.val().multipliers?.[4] || 20;
-      const bet = state.bet;
-      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
-        multiplier *= 3;
-      }
-      return endTurn(`Cashed out $${Math.floor(bet * multiplier)}`, Math.floor(bet * multiplier));
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
+        ? (pdata.multipliers?.[4] || multipliers[4] || 20) + (bet / pdata.lastBalanceBeforeBet)
+        : (pdata.multipliers?.[4] || multipliers[4] || 20);
+      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
 
+      return endTurn(
+        `Cashed out $${Math.floor(bet * multiplier)}`,
+        Math.floor(bet * multiplier)
+      );
     }
 
-    const deckSnap5 = await get(deckRef);
-    let deck5 = deckSnap5.val() || [];
-    const card5 = await drawUniqueCard(deck5, state.drawnCards, true);
-    await set(deckRef, deck5);
-    state.drawnCards.push(card5);
-    await applyCardUpgradeBonus(card5);
+    const card5 = await drawUniqueCard(state.drawnCards, true);
+    if (!card5) return endTurn('Deck is empty. Round ending early.', 0);
 
-    const guessVal = guess === 'J' ? 11 : guess === 'Q' ? 12 : guess === 'K' ? 13 : guess === 'A' ? 14 : parseInt(guess);
+    await applyCardUpgradeBonus(card5);
+    state.drawnCards.push(card5);
+
+    const guessVal =
+      guess === 'J' ? 11 :
+      guess === 'Q' ? 12 :
+      guess === 'K' ? 13 :
+      guess === 'A' ? 14 :
+      parseInt(guess, 10);
+
     if (card5.value === guessVal) {
-      await update(stateRef, state);
-      const playerSnap = await get(playerRef);
-      let multiplier = playerSnap.val().multipliers?.[5] || 500;
-      const bet = state.bet;
-      if (playerSnap.val().allInBonus && playerSnap.val().isAllIn) {
-        multiplier *= 3;
-      }      correctGuessCount++;
-      const newToneId = Date.now(); // ensures uniqueness
-      await update(stateRef, {
-        successTones: [...(state.successTones || []), { id: newToneId, count: correctGuessCount }]
-      });
-      return endTurn(`Unbelievable! Exact match! You win $${bet * multiplier}`, bet * multiplier);
+      await update(stateRef, { drawnCards: state.drawnCards });
+      await emitSuccess();
+
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
+        ? (pdata.multipliers?.[5] || multipliers[5] || 500) + (bet / pdata.lastBalanceBeforeBet)
+        : (pdata.multipliers?.[5] || multipliers[5] || 500);
+      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
+
+      return endTurn(
+        `Unbelievable! Exact match! You win $${bet * multiplier}`,
+        bet * multiplier
+      );
     } else {
-      await update(stateRef, state);
+      await update(stateRef, { drawnCards: state.drawnCards });
+      await emitFailure();
       return endTurn(`Wrong! The card was ${card5.text}. You lose.`, 0);
     }
   }
-
-  update(stateRef, { ...state, status: result });
 }
+
 
 let endTurnAlreadyCalled = false; // global scope
 
@@ -863,24 +970,20 @@ async function endTurn(message, payout) {
     await update(playerRef, { eliminated: true });
   }
 
-  // 🧼 Clean up visuals
-  document.getElementById('cardArea').innerHTML = '';
-  document.getElementById('guessButtons').innerHTML = '';
+  // 🧼 Clean up visuals:
+  // Always stop the timer…
   clearCountdown();
+  // …but only clear the card display & buttons if it was a payout (i.e. a correct cash‑out or win).
+  if (payout > 0) {
+    document.getElementById('cardArea').innerHTML = '';
+    document.getElementById('guessButtons').innerHTML = '';
+  }
 
   // 📝 Update status
   await update(stateRef, {
     status: `${localPlayer.name}: ${message}`,
     currentStage: 0
   });
-
-  // Lose tune
-  if (payout === 0) {
-    const loseToneId = Date.now();
-    await update(stateRef, {
-      loseTones: [...(stateRef.val()?.loseTones || []), { id: loseToneId }]
-    });
-  }
 
   // 👥 Refresh player UI
   const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
@@ -915,50 +1018,65 @@ async function endTurn(message, payout) {
 
 
 
+
+
 async function updateGameDOM(state) {
   document.getElementById('status').textContent = state.status || '';
   const cardArea = document.getElementById('cardArea');
   cardArea.innerHTML = '';
   (state.drawnCards || []).forEach(card => {
-  const upgrades = localPlayer.cardUpgrades || [];
-  const match = upgrades.find(up => up.text === card.text);
-  cardArea.appendChild(createCardDisplay(card, match?.effect));
-});
-
+    const match = (localPlayer.cardUpgrades || [])
+      .find(up => up.text === card.text);
+    cardArea.appendChild(createCardDisplay(card, match?.effect));
+  });
 
   const guessArea = document.getElementById('guessButtons');
   guessArea.innerHTML = '';
+
   if (state.currentPlayer === playerId && state.currentStage > 0) {
-    getOptionsForStage(state.currentStage).forEach(opt => {
-        const btn = document.createElement('button');
-        if (opt === "Cash Out") {
-          (async () => {
-            const playerSnap = await get(playerRef);
-            const playerData = playerSnap.val();
-            const multiplier = playerData.multipliers?.[state.currentStage - 1] || 1;
-            btn.textContent = `${opt} (${multiplier}x)`;
-          })();
-        } else if (state.currentStage === 5 && ['2','3','4','5','6','7','8','9','10','J','Q','K','A'].includes(opt)) {
-          btn.textContent = opt; // Don't show 500x
-        } else {
-          btn.textContent = opt;
-        }
+    let options = [];
 
-        btn.onclick = () => {
-        clearCountdown(); // clear timer on manual input
+    if (state.currentStage === 1) {
+      // always show Red/Black
+      options = ['Red', 'Black'];
+      // if player bought Blue Suits, add Blue
+      const snap = await get(playerRef);
+      if (snap.val().addBlueSuits) {
+        options.push('Blue');
+      }
+    }
+    else if (state.currentStage === 4) {
+      // 1️⃣ get the shared 4 suits…
+      const suits = ['♠','♥','♦','♣'];
+      // 2️⃣ then see if this player unlocked blue suits:
+      const snap = await get(playerRef);
+      if (snap.val().addBlueSuits) {
+        suits.push('☾','★');
+      }
+      // 3️⃣ prepend Cash Out:
+      options = ['Cash Out', ...suits];
+    } else {
+      // other stages still use the helper
+      options = getOptionsForStage(state.currentStage);
+    }
+
+    // now render buttons
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.onclick = () => {
+        clearCountdown();
         handleGuess(opt, state);
-        };
-        guessArea.appendChild(btn);
+      };
+      guessArea.appendChild(btn);
     });
 
-    // ⏱ Start 20s timer for this stage
-    startCountdown(20, () => {
-        endTurn("Ran out of time! You lose.", 0);
-    });
+    startCountdown(20, () => endTurn("Ran out of time! You lose.", 0));
   }
-  displayMultipliers();
 
+  displayMultipliers();
 }
+
 
     function getOptionsForStage(stage) {
       if (stage === 1) return ['Red', 'Black'];
@@ -1057,14 +1175,6 @@ function playTurnSound() {
   if (sound) {
     sound.currentTime = 0;
     sound.play().catch(e => console.warn("Sound playback failed:", e));
-  }
-}
-
-function playLoseTone() {
-  const sound = document.getElementById('loseSound');
-  if (sound) {
-    sound.currentTime = 0;
-    sound.play().catch(e => console.warn("Lose sound playback failed:", e));
   }
 }
 
@@ -1189,6 +1299,146 @@ async function showShopOptions(isWinner, playerData) {
         alert("If you go all in, your multiplier will be tripled!");
       }
     },
+    "Blue Suits & Boost": {
+      name: "Blue Suits & Boost",
+      desc: "Add two new suits (☾ & ★) and multiply your win‑multipliers by 2×",
+      apply: async () => {
+        // 1️⃣ fetch latest player data
+        const snap = await get(playerRef);
+        const data = snap.val() || {};
+
+        // ——— if already owned, block and inform ———
+        if (data.addBlueSuits) {
+          return alert("⚠️ You already have Blue Suits & Boost and cannot purchase it again.");
+        }
+
+        // 2️⃣ token check
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        // 3️⃣ deduct token & flag
+        const newTokens = tokens - 1;
+        await update(playerRef, {
+          addBlueSuits: true,
+          purchaseTokens: newTokens
+        });
+        // mirror in-memory
+        localPlayer.addBlueSuits = true;
+        localPlayer.purchaseTokens = newTokens;
+
+        // 4️⃣ record history
+        const history = data.modifierHistory || [];
+        history.push("Added Blue Suits & 2× multipliers");
+        await update(playerRef, { modifierHistory: history });
+
+        // 5️⃣ bump up multipliers
+        const oldMults = data.multipliers || {1:2,2:3,3:4,4:20,5:500};
+        const newMults = {};
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = Math.round(m * 2);
+        }
+        await update(playerRef, { multipliers: newMults });
+
+
+        alert("🎉 You’ve unlocked the Blue Suits and your multipliers are now 2× higher!");
+        document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
+      }
+    },
+
+    "Remove Diamonds & Clubs": {
+      name: "Remove Diamonds & Clubs",
+      desc: "Skip all ♦ and ♣ when drawing cards",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val();
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        // Mark this player as “removing” those suits
+        await update(playerRef, {
+          removeDiamondsClubs: true,
+          purchaseTokens: tokens - 1
+        });
+
+        // Record in history
+        const history = data.modifierHistory || [];
+        history.push("Remove all diamonds and clubs");
+        await update(playerRef, { modifierHistory: history });
+
+        alert("All ♦ and ♣ will now be skipped in your draws!");
+      }
+    },
+    "Snow-baller": {
+      name: "Snow-baller",
+      desc: "Win-multiplier = multiplier + (bet / balance) for your next bet",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (data.snowballer) return alert("⚠️ You already have Snow‑baller.");
+        if (tokens <= 0)       return alert("Not enough tokens.");
+
+        // mark as owned
+        await update(playerRef, {
+          snowballer: true,
+          purchaseTokens: tokens - 1
+        });
+
+        // record history
+        const history = data.modifierHistory || [];
+        history.push("Snow-baller: dynamic multiplier by % bet");
+        await update(playerRef, { modifierHistory: history });
+
+        alert("❄️ Snow-baller unlocked! Your next bet's multiplier will be multiplier + (bet / balance).");
+      }
+    },
+    "Ace & Two": {
+      name: "Ace & Two",
+      desc: "Add 1 Ace and 1 '2' for each suit you have per purchase",
+      apply: async () => {
+        const data   = (await get(playerRef)).val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        const newCount = (data.aceTwoBoostCount || 0) + 1;
+        await update(playerRef, {
+          aceTwoBoostCount: newCount,
+          purchaseTokens:   tokens - 1,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Ace & Two x${newCount}`
+          ]
+        });
+
+        alert(`🎉 Ace & Two purchased! You now get +${newCount} Aces & 2s per suit.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+    "Faceless": {
+      name: "Faceless",
+      desc: "Remove all J/Q/K from your draws (can stack purchases)",
+      apply: async () => {
+        const data   = (await get(playerRef)).val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        const newCount = (data.facelessCount || 0) + 1;
+        await update(playerRef, {
+          facelessCount:   newCount,
+          purchaseTokens:  tokens - 1,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Faceless x${newCount}`
+          ]
+        });
+
+        alert(`🆓 Faceless purchased! J/Q/K will be removed from your draws.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+
+
+
     "Bonus Interest": {
       name: "Bonus Interest",
       desc: "Earn +10% of your balance at the start of your turn",
@@ -1255,6 +1505,12 @@ async function showShopOptions(isWinner, playerData) {
           const snap = await get(playerRef);
           const data = snap.val();
           const tokens = data.purchaseTokens || 0;
+
+          // ↪— block if they already own this stage‑shield
+          if (data.shields && data.shields[stage]) {
+            return alert(`⚠️ You already have Stage ${stage} Shield.`);
+          }
+
           if (tokens <= 0) return alert("You don't have enough tokens.");
 
           const shields = data.shields || {};
@@ -1336,9 +1592,11 @@ async function showShopOptions(isWinner, playerData) {
     box.appendChild(cardEl);
 
     const desc = document.createElement('p');
-    if (effectText === '+1 bet') desc.textContent = '+1 bet if drawn';
-    else if (effectText === 'bonus_cash_25') desc.textContent = 'Gain 25% of bet';
-    else if (effectText === 'remove_card') desc.textContent = 'Remove this card from your deck';
+    if (effectText === '+1 bet')        desc.textContent = '+1 bet if drawn';
+    else if (effectText === 'bonus_cash_25') desc.textContent = 'Gain 25% of your bet';
+    else if (effectText === 'remove_card')   desc.textContent = 'Remove this card from your deck';
+    else if (effectText === 'bonus_cash_10') desc.textContent = 'Gain 10% of your balance';
+
 
     box.appendChild(desc);
 
@@ -1428,6 +1686,28 @@ function playSuccessTone() {
   });
 }
 
+function playFailureTone() {
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // A simple descending 3‐note “sad” motif
+  const melody = [220, 196, 164.81];  // A3 → G3 → E3
+  const duration = 0.3;
+
+  melody.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * duration);
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime + i * duration);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (i + 1) * duration);
+
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(audioCtx.currentTime + i * duration);
+    osc.stop(audioCtx.currentTime + (i + 1) * duration);
+  });
+}
+
+
 async function resetAllPlayers(players) {
   for (const id of Object.keys(players)) {
     await update(ref(db, `games/${lobbyCode}/players/${id}`), {
@@ -1473,14 +1753,14 @@ async function grantTokenAndShowShop(winners) {
   "Bonus Bets", "Super Multiplier", "Bonus Interest",
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
-  "All In Bonus"
+  "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
 ];
 
 const everymodifierkey = [
   "Bonus Bets", "Super Multiplier", "Bonus Interest",
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
-  "All In Bonus"
+  "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
@@ -1494,7 +1774,7 @@ const everymodifierkey = [
     const newTokens = (data.purchaseTokens || 0) + 1;
 
     const upgradeCard = getRandomCardFromDeck();
-    const possibleEffects = ['+1 bet', 'bonus_cash_25', 'remove_card'];
+    const possibleEffects = ['+1 bet', 'bonus_cash_25', 'remove_card', 'bonus_cash_10'];
     const effectsToShow = isWinner ? 3 : 2;
     const randomEffects = [...possibleEffects].sort(() => Math.random() - 0.5).slice(0, effectsToShow);
 
