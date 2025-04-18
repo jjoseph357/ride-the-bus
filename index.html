@@ -137,6 +137,23 @@
 </head>
 <body>
   <h1>Ride the Bus 🚌</h1>
+  <!-- My Deck button -->
+  <div style="position: absolute; top: 1rem; right: 1rem; z-index:1000;">
+    <button id="viewDeckBtn">My Deck</button>
+  </div>
+
+  <!-- Deck modal (hidden by default) -->
+  <div id="deckModal" class="hidden" 
+        style="position: fixed; top:0; left:0; width:100%; height:100%; 
+              background: rgba(0,0,0,0.8); color:#fff; overflow:auto; padding:2rem; z-index:1001;">
+  
+    <button id="closeDeckBtn" 
+      style="position:fixed; top:1rem; right:1rem; font-size:1.2rem; z-index:1002;">
+      ✕ Close
+    </button>
+    <h2>My Deck & Upgrades</h2>
+    <div id="deckContent" style="margin-top:1rem;"></div>
+  </div>
 
   <div class="lobby" id="lobby">
     <h2>Join or Create a Game</h2>
@@ -240,6 +257,18 @@ window.addEventListener("DOMContentLoaded", () => {
   if (joinGameBtn) joinGameBtn.addEventListener("click", () => {
     isHost = false;
     joinLobby();
+  });
+  const viewBtn  = document.getElementById('viewDeckBtn');
+  const closeBtn = document.getElementById('closeDeckBtn');
+  const modal    = document.getElementById('deckModal');
+
+  if (!viewBtn)  return console.warn("♠️ viewDeckBtn not found");
+  if (!closeBtn) return console.warn("♠️ closeDeckBtn not found");
+  if (!modal)    return console.warn("♠️ deckModal not found");
+
+  viewBtn.addEventListener('click', showDeck);
+  closeBtn.addEventListener('click', () => {
+    modal.classList.add('hidden');
   });
 
   if (startGameBtn) startGameBtn.addEventListener("click", startGame);
@@ -568,6 +597,35 @@ async function applyCardUpgradeBonus(card) {
     await update(playerRef, { balance: localPlayer.balance });
     console.log(`Upgrade applied for ${card.text}: gained $${bonus} (10% of balance)`);
   }
+  // ─── new: +3 multiplier when drawn ───────────────────────────
+  if (match.effect === 'bonus_mult_3') {
+    // fetch current stage
+    const stateSnap = await get(stateRef);
+    const state     = stateSnap.val() || {};
+    const stage     = state.currentStage;
+
+    // bump that stage’s multiplier
+    const oldMults = playerData.multipliers || {};
+    const base     = oldMults[stage] ?? multipliers[stage];
+    const newMults = { ...oldMults, [stage]: base + 3 };
+
+    await update(playerRef, { multipliers: newMults });
+    console.log(`Card upgrade: +3 multiplier applied at Stage ${stage} for ${card.text}`);
+  }
+  if (match.effect === 'bonus_mult_1_25') {
+    const stateSnap = await get(stateRef);
+    const state     = stateSnap.val() || {};
+    const stage     = state.currentStage;
+
+    const oldMults = playerData.multipliers || {};
+    const base     = oldMults[stage] ?? multipliers[stage];
+    // round to integer like other modifiers
+    const boosted  = Math.round(base * 1.25);
+
+    const newMults = { ...oldMults, [stage]: boosted };
+    await update(playerRef, { multipliers: newMults });
+    console.log(`Card upgrade: 1.25x multiplier applied at Stage ${stage} for ${card.text}`);
+  }
 }
 
 function createCardDisplay(card, effect = null) {
@@ -582,11 +640,15 @@ function createCardDisplay(card, effect = null) {
   if (effect === '+1 bet') {
     el.style.boxShadow = '0 0 12px 4px limegreen'; // green glow
   } else if (effect === 'bonus_cash_25') {
-    el.style.boxShadow = '0 0 12px 4px gold';
+    el.style.boxShadow = '0 0 12px 4px gold'; // yellow
   } else if (effect === 'remove_card') {
     el.style.boxShadow = '0 0 12px 4px red'; // red glow
   } else if (effect === 'bonus_cash_10') {
-      el.style.boxShadow = '0 0 12px 4px orange'; // orange glow for 10% balance
+    el.style.boxShadow = '0 0 12px 4px orange'; // orange glow for 10% balance
+  } else if (effect === 'bonus_mult_3') {
+    el.style.boxShadow = '0 0 12px 4px cyan';
+  } else if (effect === 'bonus_mult_1_25') {
+    el.style.boxShadow = '0 0 12px 4px magenta';
   }
 
   el.textContent = card.text;
@@ -602,12 +664,38 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
   // 2️⃣ load this player’s modifiers
   const playerSnap      = await get(playerRef);
   const data            = playerSnap.val() || {};
+  const dupCounts     = data.duplicateCounts || {};
   const boostCount      = data.aceTwoBoostCount   || 0;
   const facelessCount   = data.facelessCount      || 0;
   const remove2to4Count = data.remove2to4Count    || 0;
 
   // 3️⃣ build the in‑memory pool
   const pool = [...globalDeck];
+
+  // filter out remove_card upgrades here too
+const removed = (data.cardUpgrades || [])
+  .filter(u => u.effect === 'remove_card')
+  .map(u => u.text);
+for (const text of removed) {
+  // remove all matching entries
+  let idx;
+  while ((idx = pool.findIndex(c => c.text === text)) !== -1) {
+    pool.splice(idx, 1);
+  }
+}
+
+
+// ─── Duplicate‑card stacking ──────────────────────────────────
+Object.entries(dupCounts).forEach(([text, count]) => {
+  // find one instance in the pool (if it passed filters)
+  const template = pool.find(c => c.text === text);
+  if (!template) return;
+  for (let i = 0; i < count; i++) {
+    pool.push({ ...template, _isDup: true });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────
 
   // ─── Blue suits ───────────────────────────────
   if (data.addBlueSuits) {
@@ -659,7 +747,7 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
   }
 
   // 5️⃣ if it came from the shared deck, remove it there
-  if (card && !card._isBlue) {
+  if (card && !card._isBlue && !card._isDup) {
     const newGlobal = globalDeck.filter(c => c.text !== card.text);
     await set(deckRef, newGlobal);
   }
@@ -1019,49 +1107,72 @@ async function endTurn(message, payout) {
 
 
 async function updateGameDOM(state) {
+  // 1) Update the status line
   document.getElementById('status').textContent = state.status || '';
+
+  // 2) Fetch the *current* player's data (so everyone sees THEIR upgrades glowing)
+  const currentPlayerId   = state.currentPlayer;
+  const playerSnap        = await get(ref(db, `games/${lobbyCode}/players/${currentPlayerId}`));
+  const currentPlayerData = playerSnap.val() || {};
+
+  // 3) Redraw the card play area, using their cardUpgrades for the glow
   const cardArea = document.getElementById('cardArea');
   cardArea.innerHTML = '';
   (state.drawnCards || []).forEach(card => {
-    const match = (localPlayer.cardUpgrades || [])
-      .find(up => up.text === card.text);
-    cardArea.appendChild(createCardDisplay(card, match?.effect));
+    // find if *they* bought an upgrade for this card
+    const match = (currentPlayerData.cardUpgrades || []).find(up => up.text === card.text);
+    // pass that effect into createCardDisplay
+    const cardEl = createCardDisplay(card, match?.effect);
+    cardArea.appendChild(cardEl);
   });
 
+  // 4) Rebuild the guess buttons for *your* turn
   const guessArea = document.getElementById('guessButtons');
   guessArea.innerHTML = '';
-
   if (state.currentPlayer === playerId && state.currentStage > 0) {
-    let options = [];
+    // we still need *your* own data for multipliers & flags
+    const snap = await get(playerRef);
+    const pdata = snap.val() || {};
+    const bet   = state.bet || 0;
+    const stage = state.currentStage;
 
-    if (state.currentStage === 1) {
-      // always show Red/Black
-      options = ['Red', 'Black'];
-      // if player bought Blue Suits, add Blue
-      const snap = await get(playerRef);
-      if (snap.val().addBlueSuits) {
-        options.push('Blue');
-      }
-    }
-    else if (state.currentStage === 4) {
-      // 1️⃣ get the shared 4 suits…
+    // build options
+    let options = [];
+    if (stage === 1) {
+      options = ['Red','Black'];
+      if (pdata.addBlueSuits) options.push('Blue');
+    } else if (stage === 4) {
       const suits = ['♠','♥','♦','♣'];
-      // 2️⃣ then see if this player unlocked blue suits:
-      const snap = await get(playerRef);
-      if (snap.val().addBlueSuits) {
-        suits.push('☾','★');
-      }
-      // 3️⃣ prepend Cash Out:
+      if (pdata.addBlueSuits) suits.push('☾','★');
       options = ['Cash Out', ...suits];
     } else {
-      // other stages still use the helper
-      options = getOptionsForStage(state.currentStage);
+      options = getOptionsForStage(stage);
     }
 
-    // now render buttons
+    // render
     options.forEach(opt => {
       const btn = document.createElement('button');
-      btn.textContent = opt;
+      if (opt === 'Cash Out') {
+        // compute your actual multiplier
+        const baseKey  = stage - 1;
+        const baseMult = pdata.multipliers?.[baseKey] ?? multipliers[baseKey];
+        let actualMult = (pdata.snowballer && pdata.lastBalanceBeforeBet)
+                       ? baseMult + (bet / pdata.lastBalanceBeforeBet)
+                       : baseMult;
+        if (pdata.allInBonus && pdata.isAllIn) actualMult *= 3;
+        // ─── Clutch King support ─────────────────────────────────
+        // if past halfway through your original max bets, add +count
+        if (
+          pdata.clutchKingCount > 0 &&
+          pdata.betsMade > maxBetsPerPlayer / 2
+        ) {
+          actualMult += pdata.clutchKingCount;
+        }
+        // ─────────────────────────────────────────────────────────
+        btn.textContent = `Cash Out (${actualMult.toFixed(2)}x)`;
+      } else {
+        btn.textContent = opt;
+      }
       btn.onclick = () => {
         clearCountdown();
         handleGuess(opt, state);
@@ -1072,8 +1183,11 @@ async function updateGameDOM(state) {
     startCountdown(20, () => endTurn("Ran out of time! You lose.", 0));
   }
 
+  // 5) Finally, update the multiplier list
   displayMultipliers();
 }
+
+
 
 
     function getOptionsForStage(stage) {
@@ -1202,19 +1316,79 @@ function startCountdown(seconds, onExpire) {
 
 let lastCardOffered = null;
 
+// Build the array of every card instance in *this* player's deck
+function buildPlayerDeck(playerData) {
+  const baseSuits = ['♠','♥','♦','♣'];
+  const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  let deck = [];
+
+  // 1) One of each base card
+  for (const suit of baseSuits) {
+    for (const v of values) {
+      const num = v==='A'?14:v==='K'?13:v==='Q'?12:v==='J'?11:parseInt(v,10);
+      deck.push({ text: v + suit, suit, value: num });
+    }
+  }
+
+  // 2) Blue suits if owned
+  if (playerData.addBlueSuits) {
+    for (const suit of ['☾','★']) {
+      for (const v of values) {
+        const num = v==='A'?14:v==='K'?13:v==='Q'?12:v==='J'?11:parseInt(v,10);
+        deck.push({ text: v + suit, suit, value: num });
+      }
+    }
+  }
+
+  // 3) Ace & Two boosts (one extra per purchase)
+  const boostCount = playerData.aceTwoBoostCount || 0;
+  if (boostCount > 0) {
+    let suits = [...baseSuits];
+    if (playerData.addBlueSuits)      suits.push('☾','★');
+    if (playerData.removeDiamondsClubs)
+      suits = suits.filter(s => s!=='♦' && s!=='♣');
+    for (let i = 0; i < boostCount; i++) {
+      for (const s of suits) {
+        deck.push({ text:'A'+s, suit:s, value:14 });
+        deck.push({ text:'2'+s, suit:s, value:2  });
+      }
+    }
+  }
+
+  // 4) Removals: diamonds & clubs, faceless, remove2-4
+  const facelessCount   = playerData.facelessCount   || 0;
+  const remove2to4Count = playerData.remove2to4Count || 0;
+  deck = deck.filter(c => {
+    if (playerData.removeDiamondsClubs && (c.suit==='♦'||c.suit==='♣')) return false;
+    if (facelessCount   > 0 && [11,12,13].includes(c.value)) return false;
+    if (remove2to4Count > 0 && [2,3,4].includes(c.value))      return false;
+    return true;
+  });
+
+  // ─── Remove any cards that the player has “removed” ───────────────
+  const removed = (playerData.cardUpgrades || [])
+    .filter(u => u.effect === 'remove_card')
+    .map(u => u.text);
+  deck = deck.filter(c => !removed.includes(c.text));
+
+  return deck;
+}
+
+
 async function showShopOptions(isWinner, playerData) {
+  // 1) Reveal the shop UI and update tokens
   const shop = document.getElementById('shopSection');
   if (!shop) return;
-
   shop.classList.remove('hidden');
   document.getElementById('playerTokens').textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
 
-  // 🔐 Shared bet modifiers from Firebase
-  const stateSnap = await get(stateRef);
-  const state = stateSnap.val();
+  // 2) Fetch the shared modifier list from state
+  const stateSnap   = await get(stateRef);
+  const state       = stateSnap.val() || {};
   const sharedNames = state.sharedBetModifiers || [];
 
-  const limit = isWinner ? sharedNames.length : sharedNames.length - 1;
+  // 3) Determine how many mods to show (winners see all)
+  const limit      = isWinner ? sharedNames.length : sharedNames.length - 1;
   const shownNames = sharedNames.slice(0, limit);
 
   // 🎯 Logic map
@@ -1247,7 +1421,7 @@ async function showShopOptions(isWinner, playerData) {
     },
     "Super Multiplier": {
       name: "Super Multiplier",
-      desc: "Increase all win multipliers by x1.25, -2 bets",
+      desc: "Increase all win multipliers by 1.25x, -2 bets",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val();
@@ -1264,10 +1438,10 @@ async function showShopOptions(isWinner, playerData) {
           betModifierBonus: currentBonus - 2,
           purchaseTokens: tokens - 1
         });
-        alert("Multipliers increased by x1.25! You lose 2 bets.");
+        alert("Multipliers increased by 1.25x! You lose 2 bets.");
 
         const history = data.modifierHistory || [];
-        history.push("Increase all win multipliers by x1.25, -2 bets");
+        history.push("Increase all win multipliers by 1.25x, -2 bets");
 
         await update(playerRef, {
           purchaseTokens: tokens - 1,
@@ -1280,26 +1454,38 @@ async function showShopOptions(isWinner, playerData) {
       name: "All In Bonus",
       desc: "Going all-in triples your multiplier for that bet",
       apply: async () => {
-        const snap = await get(playerRef);
-        const data = snap.val();
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
 
+        // ① only once
+        if (data.allInBonus) {
+          return alert("⚠️ You already have All In Bonus and cannot purchase it again.");
+        }
+        // ② token check
+        if (tokens <= 0) {
+          return alert("You don't have enough tokens.");
+        }
+
+        // ③ record in history
         const history = data.modifierHistory || [];
         history.push("Going all-in triples your multiplier for that bet");
 
+        // ④ apply
         await update(playerRef, {
-          allInBonus: true,
-          purchaseTokens: tokens - 1,
-          modifierHistory: history
+          allInBonus:       true,
+          purchaseTokens:   tokens - 1,
+          modifierHistory:  history
         });
 
-        alert("If you go all in, your multiplier will be tripled!");
+        // ⑤ feedback
+        alert("🎉 All In Bonus unlocked! If you go all-in, your multiplier will be tripled.");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
     "Blue Suits & Boost": {
       name: "Blue Suits & Boost",
-      desc: "Add two new suits (☾ & ★) and multiply your win‑multipliers by 2×",
+      desc: "Add two new suits (☾ & ★) and multiply your win multipliers by 2x",
       apply: async () => {
         // 1️⃣ fetch latest player data
         const snap = await get(playerRef);
@@ -1307,7 +1493,7 @@ async function showShopOptions(isWinner, playerData) {
 
         // ——— if already owned, block and inform ———
         if (data.addBlueSuits) {
-          return alert("⚠️ You already have Blue Suits & Boost and cannot purchase it again.");
+          return alert("⚠️ You already have Blue Suits & Boost and cannot purchase it again.");
         }
 
         // 2️⃣ token check
@@ -1326,7 +1512,7 @@ async function showShopOptions(isWinner, playerData) {
 
         // 4️⃣ record history
         const history = data.modifierHistory || [];
-        history.push("Added Blue Suits & 2× multipliers");
+        history.push("Added Blue Suits & 2x multipliers");
         await update(playerRef, { modifierHistory: history });
 
         // 5️⃣ bump up multipliers
@@ -1338,11 +1524,10 @@ async function showShopOptions(isWinner, playerData) {
         await update(playerRef, { multipliers: newMults });
 
 
-        alert("🎉 You’ve unlocked the Blue Suits and your multipliers are now 2× higher!");
+        alert("🎉 You've unlocked the Blue Suits and your multipliers are now 2x higher!");
         document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
       }
     },
-
     "Remove Diamonds & Clubs": {
       name: "Remove Diamonds & Clubs",
       desc: "Skip all ♦ and ♣ when drawing cards",
@@ -1386,19 +1571,18 @@ async function showShopOptions(isWinner, playerData) {
           ]
         });
 
-        alert(`🚫 Cards 2, 3 & 4 will now be removed from your draws (purchased ${newCount}×).`);
+        alert(`🚫 Cards 2, 3 & 4 will now be removed from your draws (purchased ${newCount}x).`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
-
     "Snow-baller": {
       name: "Snow-baller",
-      desc: "Win-multiplier = multiplier + (bet / balance) for your next bet",
+      desc: "Win-multiplier = multiplier + (bet / balance) for your next bet",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (data.snowballer) return alert("⚠️ You already have Snow‑baller.");
+        if (data.snowballer) return alert("⚠️ You already have Snow-baller.");
         if (tokens <= 0)       return alert("Not enough tokens.");
 
         // mark as owned
@@ -1478,7 +1662,7 @@ async function showShopOptions(isWinner, playerData) {
           purchaseTokens:         tokens - 1,
           modifierHistory: [
             ...(data.modifierHistory || []),
-            `Starting Balance x${newMult.toFixed(2)}`
+            `Starting Balance ${newMult.toFixed(2)}x`
           ]
         });
 
@@ -1487,9 +1671,77 @@ async function showShopOptions(isWinner, playerData) {
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
+    "Humble Beginnings": {
+      name: "Humble beginnings",
+      desc: "Halve your next round's starting balance and increase all win multipliers by 1.25x",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
 
+        // 1️⃣ Compute new start balance multiplier (divide by 2 each purchase)
+        const oldSBMult = data.startBalanceMultiplier || 1;
+        const newSBMult = oldSBMult / 2;
 
+        // 2️⃣ Compute new stage multipliers (×1.25 each purchase)
+        const oldMults = data.multipliers || {1:2,2:3,3:4,4:20,5:500};
+        const newMults = {};
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = Math.round(m * 1.25);
+        }
 
+        // 3️⃣ Track how many times they've bought this
+        const newCount = (data.humbleCount || 0) + 1;
+
+        // 4️⃣ Deduct token and record everything
+        const newTokens = tokens - 1;
+        const history   = data.modifierHistory || [];
+        history.push(`Half starting balance, all multipliers 1.25x #${newCount}`);
+
+        await update(playerRef, {
+          humbleCount:            newCount,
+          startBalanceMultiplier: newSBMult,
+          multipliers:            newMults,
+          purchaseTokens:         newTokens,
+          modifierHistory:        history
+        });
+
+        alert(
+          `Humble beginnings purchased (${newCount}x)!\n` +
+          `→ Next round start balance: ${newSBMult.toFixed(2)}x base\n`
+        );
+        document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
+      }
+    },
+    "Clutch King": {
+      name: "Clutch King",
+      desc: "Gain +1 multiplier on bets once you’re past halfway through your max bets (stackable)",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        // stack count
+        const newCount = (data.clutchKingCount || 0) + 1;
+
+        // record in history
+        const history = data.modifierHistory || [];
+        history.push(`Clutch King x${newCount}`);
+
+        // persist
+        await update(playerRef, {
+          clutchKingCount:  newCount,
+          purchaseTokens:   tokens - 1,
+          modifierHistory:  history
+        });
+
+        alert(`🏆 Clutch King purchased! On late bets you now get +${newCount} to your multiplier.`);
+        document.getElementById('playerTokens')
+                .textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
     "Bonus Interest": {
       name: "Bonus Interest",
       desc: "Earn +10% of your balance at the start of your turn",
@@ -1588,10 +1840,13 @@ async function showShopOptions(isWinner, playerData) {
 
   };
 
-  // 🛠️ Render bet modifiers
+
+  // ─── Card Upgrade Section ────────────────────────────────────────────
+
+  // 4) Render the Bet Modifiers (uses betModifiersMap defined elsewhere)
   const betDiv = document.getElementById('betModifiers');
-  betDiv.innerHTML = '<div style="width: 100%; text-align: center; font-weight: bold; margin-bottom: 0.5rem;">Bet Modifiers</div>';
-    shownNames.forEach(name => {
+  betDiv.innerHTML = '<div style="width:100%;text-align:center;font-weight:bold;margin-bottom:0.5rem;">Bet Modifiers</div>';
+  shownNames.forEach(name => {
     const mod = betModifiersMap[name];
     const box = document.createElement('div');
     box.className = 'shop-item';
@@ -1599,98 +1854,172 @@ async function showShopOptions(isWinner, playerData) {
       <h4>🛠️ ${mod.name}</h4>
       <p>${mod.desc}</p>
     `;
-
     const btn = document.createElement('button');
     btn.innerText = 'Purchase';
     btn.onclick = async () => {
-      if (playerData.purchaseTokens > 0) {
-        await mod.apply();
-        const newTokens = playerData.purchaseTokens - 1;
-        await update(playerRef, { purchaseTokens: newTokens });
-        playerData.purchaseTokens = newTokens;
-        btn.disabled = true;
-        btn.textContent = 'Purchased';
-        document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
-      }
+      if (playerData.purchaseTokens <= 0) return alert("You don't have enough tokens.");
+      await mod.apply();
+      btn.disabled = true;
+      btn.textContent = 'Purchased';
+      document.getElementById('playerTokens').textContent = `Tokens: ${playerData.purchaseTokens - 1}`;
     };
-
     box.appendChild(btn);
     betDiv.appendChild(box);
   });
 
-  // 🃏 Card Upgrade Section
+  // ─── Card Upgrade Section ────────────────────────────────────────────
+
+  // Pick one random card instance from their deck
+  const fullDeck    = buildPlayerDeck(playerData);
+  const upgradeCard = fullDeck[Math.floor(Math.random() * fullDeck.length)];
+
+  // Decide which card‐upgrade effects to show
+  const allEffects = [
+  '+1 bet',
+  'bonus_cash_25',
+  'remove_card',
+  'bonus_cash_10',
+  'duplicate_card',
+  'bonus_mult_3',
+  'bonus_mult_1_25',
+  ];
+  const effectsToShow = playerData.offeredEffects 
+                      || allEffects.sort(() => Math.random() - 0.5)
+                                   .slice(isWinner ? 3 : 2);
+
+  // Render the Card Upgrade shop
   const cardDiv = document.getElementById('cardUpgradeArea');
   cardDiv.innerHTML = '<strong>Card Upgrade</strong>';
-
-  const card = playerData.offeredCard || getRandomCardFromDeck();
 
   const upgradeFlex = document.createElement('div');
   upgradeFlex.style.display = 'flex';
   upgradeFlex.style.flexWrap = 'wrap';
   upgradeFlex.style.justifyContent = 'center';
-  upgradeFlex.style.alignItems = 'stretch';
   upgradeFlex.style.gap = '1rem';
   upgradeFlex.style.marginTop = '0.5rem';
-  upgradeFlex.style.width = '100%';
 
-  (playerData.offeredEffects || ['+1 bet']).forEach(effectText => {
+  // find any existing upgrade on this card
+  const existing = (playerData.cardUpgrades || [])
+                   .find(u => u.text === upgradeCard.text)?.effect;
+
+  effectsToShow.forEach(effectText => {
     const box = document.createElement('div');
     box.className = 'shop-item';
-    box.style.flex = '1 1 150px';
+    box.style.flex = '1 1 120px';
 
-    const cardEl = createCardDisplay(card, effectText);
+    // show glow only if the card already has an upgrade
+    const cardEl = createCardDisplay(upgradeCard, existing);
     cardEl.style.margin = '0 auto';
     box.appendChild(cardEl);
 
+    // Human‐readable description of the offered upgrade
     const desc = document.createElement('p');
-    if (effectText === '+1 bet')        desc.textContent = '+1 bet if drawn';
+    if (effectText === '+1 bet')             desc.textContent = '+1 bet if drawn';
     else if (effectText === 'bonus_cash_25') desc.textContent = 'Gain 25% of your bet';
-    else if (effectText === 'remove_card')   desc.textContent = 'Remove this card from your deck';
     else if (effectText === 'bonus_cash_10') desc.textContent = 'Gain 10% of your balance';
-
+    else if (effectText === 'remove_card')   desc.textContent = 'Remove this card from your deck';
+    else if (effectText === 'duplicate_card')desc.textContent = 'Duplicate this card into your deck';
+    else if (effectText === 'bonus_mult_3')  desc.textContent = '+3 multiplier when drawn';
+    else if (effectText === 'bonus_mult_1_25') desc.textContent = '1.25x multiplier when drawn';
 
     box.appendChild(desc);
 
+    // Purchase button
     const btn = document.createElement('button');
     btn.textContent = 'Upgrade';
-    const hasTokens = (playerData.purchaseTokens || 0) > 0;
-    if (!hasTokens) btn.disabled = true;
+    if ((playerData.purchaseTokens || 0) <= 0) btn.disabled = true;
 
     btn.onclick = async () => {
-      const snap = await get(playerRef);
-      const latest = snap.val();
-      const tokens = latest.purchaseTokens || 0;
+  const snap   = await get(playerRef);
+  const latest = snap.val() || {};
+  const tokens = latest.purchaseTokens || 0;
+  if (tokens <= 0) return alert("You don't have any tokens left!");
 
-      if (tokens <= 0) return alert("You don't have any tokens left!");
+  const history = latest.modifierHistory || [];
+  const updates = { purchaseTokens: tokens - 1 };
 
-      let upgrades = latest.cardUpgrades || [];
-      upgrades = upgrades.filter(c => c.text !== card.text);
-      const history = latest.modifierHistory || [];
+  if (effectText === 'remove_card') {
+    // — REMOVE CARD —
+    const cardUpgrades = latest.cardUpgrades || [];
+    // remove any previous upgrade on this card
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: 'remove_card' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`Remove ${upgradeCard.text} from deck`);
+    btn.textContent = 'Removed';
+  }
+  else if (effectText === 'duplicate_card') {
+    // — DUPLICATE CARD —
+    const dupCounts = latest.duplicateCounts || {};
+    const newCount  = (dupCounts[upgradeCard.text] || 0) + 1;
+    dupCounts[upgradeCard.text] = newCount;
+    updates.duplicateCounts = dupCounts;
+    history.push(`Duplicate ${upgradeCard.text} (×${newCount})`);
+    btn.textContent = 'Duplicated';
+  }
+  else if (effectText === 'bonus_cash_25') {
+    // — GAIN 25% OF YOUR BET —
+    const cardUpgrades = latest.cardUpgrades || [];
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_cash_25' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`Gain 25% of bet on ${upgradeCard.text}`);
+    btn.textContent = 'Upgraded';
+  }
+  else if (effectText === 'bonus_cash_10') {
+    // — GAIN 10% OF YOUR BALANCE —
+    const cardUpgrades = latest.cardUpgrades || [];
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_cash_10' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`Gain 10% of balance on ${upgradeCard.text}`);
+    btn.textContent = 'Upgraded';
+  }
+  else if (effectText === '+1 bet') {
+    // — +1 BET WHEN DRAWN —
+    const cardUpgrades = latest.cardUpgrades || [];
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: '+1 bet' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`+1 bet if ${upgradeCard.text} drawn`);
+    btn.textContent = 'Upgraded';
+  }
+  else if (effectText === 'bonus_mult_3') {
+    const cardUpgrades = latest.cardUpgrades || [];
+    // remove any previous upgrade on this card
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_mult_3' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`+3 multiplier on ${upgradeCard.text}`);
+    btn.textContent = 'Upgraded';
+  }
+  else if (effectText === 'bonus_mult_1_25') {
+    const cardUpgrades = latest.cardUpgrades || [];
+    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
+    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_mult_1_25' });
+    updates.cardUpgrades = cardUpgrades;
+    history.push(`1.25x multiplier on ${upgradeCard.text}`);
+    btn.textContent = 'Upgraded';
+  }
 
-      if (effectText === 'remove_card') {
-        // No upgrade added—removal is the upgrade
-        upgrades.push({ text: card.text, effect: 'remove_card' });
-        history.push(`Remove card ${card.text} from deck`);
-      } else {
-        upgrades.push({ text: card.text, effect: effectText });
-        history.push(`Upgrade ${card.text}: ${effectText}`);
-      }
 
-      await update(playerRef, {
-        cardUpgrades: upgrades,
-        purchaseTokens: tokens - 1,
-        modifierHistory: history
-      });
+  // finally, persist history and tokens
+  updates.modifierHistory = history;
+  await update(playerRef, updates);
 
-      btn.disabled = true;
-      btn.textContent = 'Upgraded';
-      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
-    };
-
+  btn.disabled = true;
+  document.getElementById('playerTokens')
+          .textContent = `Tokens: ${tokens - 1}`;
+};
     box.appendChild(btn);
     upgradeFlex.appendChild(box);
   });
-
 
   cardDiv.appendChild(upgradeFlex);
 }
@@ -1816,7 +2145,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost"
+  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King",
 ];
 
 const everymodifierkey = [
@@ -1824,7 +2153,7 @@ const everymodifierkey = [
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost"
+  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King",
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
@@ -1838,7 +2167,15 @@ const everymodifierkey = [
     const newTokens = (data.purchaseTokens || 0) + 1;
 
     const upgradeCard = getRandomCardFromDeck();
-    const possibleEffects = ['+1 bet', 'bonus_cash_25', 'remove_card', 'bonus_cash_10'];
+    const possibleEffects = [
+      '+1 bet',
+      'bonus_cash_25',
+      'remove_card',
+      'bonus_cash_10',
+      'duplicate_card',
+      'bonus_mult_3',
+      'bonus_mult_1_25',
+    ];
     const effectsToShow = isWinner ? 3 : 2;
     const randomEffects = [...possibleEffects].sort(() => Math.random() - 0.5).slice(0, effectsToShow);
 
@@ -1969,6 +2306,62 @@ if (!allDone) return advanceToNextPlayer();
   });
 }
 
+async function showDeck() {
+  // 1) fetch your player data
+  const snap = await get(playerRef);
+  const playerData = snap.val() || {};
+
+  // 2) rebuild your actual deck and get your upgrades
+  let deck     = buildPlayerDeck(playerData);  const dupCounts  = playerData.duplicateCounts || {};
+  for (const [text, count] of Object.entries(dupCounts)) {
+    const template = deck.find(c => c.text === text);
+    if (!template) continue;
+    // push N extra visual copies
+    for (let i = 0; i < count; i++) {
+      deck.push({ ...template });
+    }
+  }
+    // ─── new: sort by suit then value ───────────────────────────
+  const suitOrder = ['♥','♦','♠','♣','☾','★'];
+  deck.sort((a, b) => {
+    const s = suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
+    return s !== 0 ? s : a.value - b.value;
+  });
+
+
+  const upgrades = playerData.cardUpgrades || [];
+
+  // 3) render into the modal
+  const container = document.getElementById('deckContent');
+  container.innerHTML = '';  // clear previous
+
+  // create a flex grid
+  const grid = document.createElement('div');
+  grid.style.display      = 'flex';
+  grid.style.flexWrap     = 'wrap';
+  grid.style.gap          = '0.5rem';
+  grid.style.justifyContent = 'flex-start';
+
+  deck.forEach(card => {
+    // find if this exact card has an upgrade
+    const match = upgrades.find(u => u.text === card.text);
+
+    // create the card element (this applies color + glow)
+    const cardEl = createCardDisplay(card, match?.effect);
+
+    // optionally add a tooltip/title if they have an upgrade
+    if (match) {
+      cardEl.title = match.effect.replace(/_/g, ' ');
+    }
+
+    grid.appendChild(cardEl);
+  });
+
+  container.appendChild(grid);
+
+  // 4) show the modal
+  document.getElementById('deckModal').classList.remove('hidden');
+}
 
 
 </script>
