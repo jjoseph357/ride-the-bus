@@ -595,42 +595,38 @@ function createCardDisplay(card, effect = null) {
 
 
 async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
-  // 1️⃣ Load the shared deck
+  // 1️⃣ load the shared deck
   const deckSnap   = await get(deckRef);
   const globalDeck = deckSnap.val() || [];
 
-  // 2️⃣ Load this player’s modifiers
-  const playerSnap = await get(playerRef);
-  const data       = playerSnap.val() || {};
+  // 2️⃣ load this player’s modifiers
+  const playerSnap      = await get(playerRef);
+  const data            = playerSnap.val() || {};
+  const boostCount      = data.aceTwoBoostCount   || 0;
+  const facelessCount   = data.facelessCount      || 0;
+  const remove2to4Count = data.remove2to4Count    || 0;
 
-  // 3️⃣ Build the in‑memory pool starting from the shared deck
+  // 3️⃣ build the in‑memory pool
   const pool = [...globalDeck];
 
-  // ─── Blue Suits ───────────────────────────────
+  // ─── Blue suits ───────────────────────────────
   if (data.addBlueSuits) {
     const blueSuits = ['☾','★'];
     const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
     for (const suit of blueSuits) {
       for (const v of values) {
-        const num = v === 'A' ? 14
-                  : v === 'K' ? 13
-                  : v === 'Q' ? 12
-                  : v === 'J' ? 11
-                  : parseInt(v, 10);
+        const num = v==='A'?14:v==='K'?13:v==='Q'?12:v==='J'?11:parseInt(v,10);
         pool.push({ text: v + suit, suit, value: num, _isBlue: true });
       }
     }
   }
 
   // ─── Ace & Two stacking ───────────────────────
-  const boostCount = data.aceTwoBoostCount || 0;
   if (boostCount > 0) {
-    // figure out which suits apply
     let suits = ['♠','♥','♦','♣'];
-    if (data.addBlueSuits)          suits.push('☾','★');
-    if (data.removeDiamondsClubs)   suits = suits.filter(s => s !== '♦' && s !== '♣');
+    if (data.addBlueSuits)        suits.push('☾','★');
+    if (data.removeDiamondsClubs) suits = suits.filter(s => s!=='♦' && s!=='♣');
 
-    // for each purchase, add one extra Ace & 2 of each suit
     for (let i = 0; i < boostCount; i++) {
       for (const suit of suits) {
         pool.push({ text: 'A' + suit, suit, value: 14, _isBlue: true });
@@ -639,29 +635,30 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
     }
   }
 
-  // ─── Draw a random card with filters ──────────
+  // 4️⃣ random‑draw with duplicate/suit/value checks
   let card  = null;
   let tries = pool.length;
   while (tries-- && !card) {
     const idx     = Math.floor(Math.random() * pool.length);
     const attempt = pool.splice(idx, 1)[0];
 
-    // duplicate exact card?
-    const dupCard  = drawnCards.some(c => c.text === attempt.text);
-    // duplicate value when excludeSameValue is on?
-    const dupValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
-    // remove ♦/♣ if the player bought “Remove Diamonds & Clubs”
+    const dupCard   = drawnCards.some(c => c.text  === attempt.text);
+    const dupValue  = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
     const removeSuit = data.removeDiamondsClubs
                     && (attempt.suit === '♦' || attempt.suit === '♣');
-    // remove J/Q/K if the player has any Faceless purchases
-    const removeFace = (data.facelessCount || 0) > 0
+    const removeFace = facelessCount > 0
                     && (attempt.value === 11 || attempt.value === 12 || attempt.value === 13);
+    const removeLow  = remove2to4Count > 0
+                    && (attempt.value === 2  || attempt.value === 3  || attempt.value === 4);
 
-    if (dupCard || dupValue || removeSuit || removeFace) continue;
+    if (dupCard || dupValue || removeSuit || removeFace || removeLow) {
+      continue;
+    }
+
     card = attempt;
   }
 
-  // 5️⃣ If it came from the shared deck (not a synthetic _isBlue card), remove it there
+  // 5️⃣ if it came from the shared deck, remove it there
   if (card && !card._isBlue) {
     const newGlobal = globalDeck.filter(c => c.text !== card.text);
     await set(deckRef, newGlobal);
@@ -669,6 +666,7 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
 
   return card;
 }
+
 
 
 
@@ -1368,6 +1366,31 @@ async function showShopOptions(isWinner, playerData) {
         alert("All ♦ and ♣ will now be skipped in your draws!");
       }
     },
+    "Remove 2-4": {
+      name: "Remove 2-4",
+      desc: "Skip all 2s, 3s & 4s in your draws (stackable)",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        // bump the count
+        const newCount = (data.remove2to4Count || 0) + 1;
+        await update(playerRef, {
+          remove2to4Count:   newCount,
+          purchaseTokens:    tokens - 1,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Remove 2-4 x${newCount}`
+          ]
+        });
+
+        alert(`🚫 Cards 2, 3 & 4 will now be removed from your draws (purchased ${newCount}×).`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+
     "Snow-baller": {
       name: "Snow-baller",
       desc: "Win-multiplier = multiplier + (bet / balance) for your next bet",
@@ -1433,6 +1456,34 @@ async function showShopOptions(isWinner, playerData) {
         });
 
         alert(`🆓 Faceless purchased! J/Q/K will be removed from your draws.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+    "Starting Balance Boost": {
+      name: "Starting Balance Boost",
+      desc: "Multiply your next round's starting balance by 1.5x",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        // 1️⃣ compute new multiplier
+        const oldMult = data.startBalanceMultiplier || 1;
+        const newMult = oldMult * 1.5;
+
+        // 2️⃣ save it, deduct token & record history
+        await update(playerRef, {
+          startBalanceMultiplier: newMult,
+          purchaseTokens:         tokens - 1,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Starting Balance x${newMult.toFixed(2)}`
+          ]
+        });
+
+        // 3️⃣ feedback
+        alert(`💰 Your next rounds will start with ${newMult.toFixed(2)}x the base balance.`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
@@ -1710,22 +1761,33 @@ function playFailureTone() {
 
 async function resetAllPlayers(players) {
   for (const id of Object.keys(players)) {
-    await update(ref(db, `games/${lobbyCode}/players/${id}`), {
-      balance: 100,
-      betsMade: 0,
-      eliminated: false,
-      isRoundWinner: false, // 🧹 clear winner flag
+    const pRef   = ref(db, `games/${lobbyCode}/players/${id}`);
+    const snap   = await get(pRef);
+    const pdata  = snap.val() || {};
+
+    // apply their multiplier (default = 1)
+    const mult      = pdata.startBalanceMultiplier || 1;
+    const startAmt  = Math.floor(100 * mult);
+
+    await update(pRef, {
+      balance:      startAmt,
+      betsMade:     0,
+      eliminated:   false,
+      isRoundWinner: false,
       roundBetBonus: 0
     });
   }
 
-  // Sync local copy
+  // sync local copy for this client
   if (players[playerId]) {
-    localPlayer.balance = 100;
+    const me  = players[playerId];
+    const m   = me.startBalanceMultiplier || 1;
+    localPlayer.balance  = Math.floor(100 * m);
     localPlayer.betsMade = 0;
     localPlayer.eliminated = false;
   }
 }
+
 
 async function reshuffleDeck() {
   const fullDeck = [];
@@ -1754,6 +1816,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
+  "Remove 2-4","Starting Balance Boost"
 ];
 
 const everymodifierkey = [
@@ -1761,6 +1824,7 @@ const everymodifierkey = [
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
+  "Remove 2-4","Starting Balance Boost"
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
