@@ -805,6 +805,10 @@ async function handleGuess(guess, state) {
   // ─── Stage 2 ────────────────────────────────────────────────────────────────
   if (stage === 2) {
     if (guess === 'Cash Out') {
+      // fetch player data so pdata is defined
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+
       // remove first card then compute payout
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
