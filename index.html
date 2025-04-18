@@ -561,12 +561,6 @@ async function applyCardUpgradeBonus(card) {
   const match = (playerData.cardUpgrades || []).find(up => up.text === card.text);
   if (!match) return;
 
-  if (match.effect === '+1 bet') {
-    const roundBonus = playerData.roundBetBonus || 0;
-    await update(playerRef, { roundBetBonus: roundBonus + 1 });
-    console.log(`Upgrade applied for ${card.text}: +1 bet this round`);
-  }
-
   if (match.effect === 'Gain 25% of bet') {
     const stateSnap = await get(stateRef);
     const state = stateSnap.val();
@@ -850,6 +844,17 @@ async function handleGuess(guess, state) {
       if (pdata.allInBonus && pdata.isAllIn) {
         multiplier *= 3;
       }
+
+      // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
+      const psnap2 = await get(playerRef);
+      const pdata2 = psnap2.val() || {};
+      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
+      if (hasPlusOne) {
+        const roundBonus = pdata2.roundBetBonus || 0;
+        await update(playerRef, { roundBetBonus: roundBonus + 1 });
+        console.log(`Applied +1-bet card upgrade on cash-out`);
+      }
+
       
       return endTurn(
         `Cashed out $${Math.floor(bet * multiplier)}`,
@@ -917,6 +922,16 @@ async function handleGuess(guess, state) {
       if (pdata.allInBonus && pdata.isAllIn) {
         multiplier *= 3;
       }
+      // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
+      const psnap2 = await get(playerRef);
+      const pdata2 = psnap2.val() || {};
+      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
+      if (hasPlusOne) {
+        const roundBonus = pdata2.roundBetBonus || 0;
+        await update(playerRef, { roundBetBonus: roundBonus + 1 });
+        console.log(`Applied +1-bet card upgrade on cash-out`);
+      }
+
 
       // 6) Finish
       return endTurn(
@@ -986,6 +1001,16 @@ async function handleGuess(guess, state) {
       if (pdata.allInBonus && pdata.isAllIn) {
         multiplier *= 3;
       }
+      // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
+      const psnap2 = await get(playerRef);
+      const pdata2 = psnap2.val() || {};
+      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
+      if (hasPlusOne) {
+        const roundBonus = pdata2.roundBetBonus || 0;
+        await update(playerRef, { roundBetBonus: roundBonus + 1 });
+        console.log(`Applied +1-bet card upgrade on cash-out`);
+      }
+
 
       // 6) Finish
       return endTurn(
@@ -1052,6 +1077,16 @@ async function handleGuess(guess, state) {
       if (pdata.allInBonus && pdata.isAllIn) {
         multiplier *= 3;
       }
+      // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
+      const psnap2 = await get(playerRef);
+      const pdata2 = psnap2.val() || {};
+      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
+      if (hasPlusOne) {
+        const roundBonus = pdata2.roundBetBonus || 0;
+        await update(playerRef, { roundBetBonus: roundBonus + 1 });
+        console.log(`Applied +1-bet card upgrade on cash-out`);
+      }
+
 
       // 6) Finish
       return endTurn(
@@ -1665,7 +1700,7 @@ async function showShopOptions(isWinner, playerData) {
     },
     "Remove 2-4": {
       name: "Remove 2-4",
-      desc: "Skip all 2s, 3s & 4s in your draws (stackable)",
+      desc: "Skip all 2s, 3s & 4s in your draws",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -1689,7 +1724,7 @@ async function showShopOptions(isWinner, playerData) {
     },
     "Snow-baller": {
       name: "Snow-baller",
-      desc: "Win-multiplier = multiplier + (bet / balance) for your next bet",
+      desc: "Win multiplier = multiplier + (bet / balance) for your next bet",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val() || {};
