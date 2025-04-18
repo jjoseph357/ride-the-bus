@@ -567,7 +567,7 @@ async function applyCardUpgradeBonus(card) {
     console.log(`Upgrade applied for ${card.text}: +1 bet this round`);
   }
 
-  if (match.effect === 'bonus_cash_25') {
+  if (match.effect === 'Gain 25% of bet') {
     const stateSnap = await get(stateRef);
     const state = stateSnap.val();
     const bet = state.bet || 0;
@@ -587,7 +587,7 @@ async function applyCardUpgradeBonus(card) {
   }
 
   // ─── New: 10% of current balance on draw ─────────────────────────────────
-  if (match.effect === 'bonus_cash_10') {
+  if (match.effect === 'Gain 10% of Balance') {
     // fetch fresh balance
     const snap = await get(playerRef);
     const pdata = snap.val() || {};
@@ -597,34 +597,26 @@ async function applyCardUpgradeBonus(card) {
     await update(playerRef, { balance: localPlayer.balance });
     console.log(`Upgrade applied for ${card.text}: gained $${bonus} (10% of balance)`);
   }
-  // ─── new: +3 multiplier when drawn ───────────────────────────
-  if (match.effect === 'bonus_mult_3') {
-    // fetch current stage
-    const stateSnap = await get(stateRef);
-    const state     = stateSnap.val() || {};
-    const stage     = state.currentStage;
-
-    // bump that stage’s multiplier
-    const oldMults = playerData.multipliers || {};
-    const base     = oldMults[stage] ?? multipliers[stage];
-    const newMults = { ...oldMults, [stage]: base + 3 };
-
-    await update(playerRef, { multipliers: newMults });
-    console.log(`Card upgrade: +3 multiplier applied at Stage ${stage} for ${card.text}`);
+  // ─── new: +3 boost on next Cash‑Out ──────────────────────────
+  if (match.effect === '+3 Mult') {
+    await update(playerRef, { bonusPlus3Active: true });
+    console.log(`+3 Mult drawn: will apply +3 on next cash-out`);
   }
-  if (match.effect === 'bonus_mult_1_25') {
-    const stateSnap = await get(stateRef);
-    const state     = stateSnap.val() || {};
-    const stage     = state.currentStage;
-
+  // ─── new: one‐time 1.25× boost for any cash‑out this round ─────────────────
+  if (match.effect === '1.25x Mult') {
+    // mark that future Cash Outs this round get +25%
+    await update(playerRef, { bonusMult1_25Active: true });
+    console.log(`1.25x card drawn: next cash-out this bet will be boosted`);
+  }
+  // ─── Kingpin support ─────────────────────────────────────────
+  if ((playerData.kingpinCount || 0) > 0 && card.value === 13) {
+    const stage    = (await get(stateRef)).val().currentStage;
     const oldMults = playerData.multipliers || {};
     const base     = oldMults[stage] ?? multipliers[stage];
-    // round to integer like other modifiers
-    const boosted  = Math.round(base * 1.25);
-
+    const boosted  = base + playerData.kingpinCount;
     const newMults = { ...oldMults, [stage]: boosted };
     await update(playerRef, { multipliers: newMults });
-    console.log(`Card upgrade: 1.25x multiplier applied at Stage ${stage} for ${card.text}`);
+    console.log(`Kingpin: +${playerData.kingpinCount} multiplier applied at Stage ${stage} for drawing ${card.text}`);
   }
 }
 
@@ -639,15 +631,15 @@ function createCardDisplay(card, effect = null) {
 
   if (effect === '+1 bet') {
     el.style.boxShadow = '0 0 12px 4px limegreen'; // green glow
-  } else if (effect === 'bonus_cash_25') {
+  } else if (effect === 'Gain 25% of bet') {
     el.style.boxShadow = '0 0 12px 4px gold'; // yellow
   } else if (effect === 'remove_card') {
     el.style.boxShadow = '0 0 12px 4px red'; // red glow
-  } else if (effect === 'bonus_cash_10') {
+  } else if (effect === 'Gain 10% of Balance') {
     el.style.boxShadow = '0 0 12px 4px orange'; // orange glow for 10% balance
-  } else if (effect === 'bonus_mult_3') {
+  } else if (effect === '+3 Mult') {
     el.style.boxShadow = '0 0 12px 4px cyan';
-  } else if (effect === 'bonus_mult_1_25') {
+  } else if (effect === '1.25x Mult') {
     el.style.boxShadow = '0 0 12px 4px magenta';
   }
 
@@ -821,15 +813,39 @@ async function handleGuess(guess, state) {
       state.drawnCards = [];
       await update(stateRef, state);
 
-      // ─── Snow‑baller dynamic multiplier ─────────────────────────
-      const psnap = await get(playerRef);
-      const pdata = psnap.val() || {};
-      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
-        ? (pdata.multipliers?.[1] || 2) + (bet / pdata.lastBalanceBeforeBet)
-        : (pdata.multipliers?.[1] || 2);
-      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
-      // ─────────────────────────────────────────────────────────────
+      // 1) Base multiplier from card‑upgraded array
+      let multiplier = pdata.multipliers?.[1] || multipliers[1];
+      // 2) Card modifier “burn” effects (run before any bet‑mods)
+      // ─── one‑time +3 Mult burn ─────────────────────────────
+      if (pdata.bonusPlus3Active) {
+        multiplier += 3;
+        await update(playerRef, { bonusPlus3Active: false });
+        console.log('Applied +3 mult on Stage 2 cash-out');
+      }
+      //    e.g. one‑time 1.25× boost
+      if (pdata.bonusMult1_25Active) {
+        multiplier = Math.round(multiplier * 1.25);
+        await update(playerRef, { bonusMult1_25Active: false });
+        console.log('Applied 1.25x mult on Stage 2 cash-out');
+      }
 
+      // (If you had any other “once‑per‑draw” flags, handle them here…)
+      
+      // 3) Now apply your bet modifiers in order
+      // Clutch King (if you’ve passed halfway)
+      if (
+        pdata.clutchKingCount > 0 &&
+        pdata.betsMade > maxBetsPerPlayer / 2
+      ) {
+        multiplier += pdata.clutchKingCount;
+      }
+      if (pdata.snowballer && pdata.lastBalanceBeforeBet) {
+        multiplier = multiplier + (bet / pdata.lastBalanceBeforeBet);
+      }
+      if (pdata.allInBonus && pdata.isAllIn) {
+        multiplier *= 3;
+      }
+      
       return endTurn(
         `Cashed out $${Math.floor(bet * multiplier)}`,
         Math.floor(bet * multiplier)
@@ -861,25 +877,43 @@ async function handleGuess(guess, state) {
   // ─── Stage 3 ────────────────────────────────────────────────────────────────
   if (stage === 3) {
     if (guess === 'Cash Out') {
+      // 1) Remove the first drawn card
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
-      const used = state.drawnCards.map(c => c.text);
-      deck = deck.filter(c => !used.includes(c.text));
-      deck.sort(() => Math.random() - 0.5);
+      deck = deck.filter(c => c.text !== state.drawnCards[0].text);
       await set(deckRef, deck);
 
+      // 2) Clear drawn cards and persist
       state.drawnCards = [];
       await update(stateRef, state);
 
-      // ─── Snow‑baller dynamic multiplier ─────────────────────────
+      // 3) Base multiplier for Stage 3 cash‑out (3×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
-      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
-        ? (pdata.multipliers?.[2] || 3) + (bet / pdata.lastBalanceBeforeBet)
-        : (pdata.multipliers?.[2] || 3);
-      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
-      // ─────────────────────────────────────────────────────────────
+      let multiplier = pdata.multipliers?.[2] || multipliers[2];
 
+      // 4) Burn “one‑off” card modifiers first
+      if (pdata.bonusPlus3Active) {
+        multiplier += 3;
+        await update(playerRef, { bonusPlus3Active: false });
+      }
+      if (pdata.bonusMult1_25Active) {
+        multiplier = Math.round(multiplier * 1.25);
+        await update(playerRef, { bonusMult1_25Active: false });
+      }
+
+      // 5) Now apply bet‑modifiers in order
+      if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
+        multiplier += pdata.clutchKingCount;
+      }
+      if (pdata.snowballer && pdata.lastBalanceBeforeBet) {
+        multiplier += bet / pdata.lastBalanceBeforeBet;
+      }
+      if (pdata.allInBonus && pdata.isAllIn) {
+        multiplier *= 3;
+      }
+
+      // 6) Finish
       return endTurn(
         `Cashed out $${Math.floor(bet * multiplier)}`,
         Math.floor(bet * multiplier)
@@ -912,19 +946,49 @@ async function handleGuess(guess, state) {
   // ─── Stage 4 ────────────────────────────────────────────────────────────────
   if (stage === 4) {
     if (guess === 'Cash Out') {
-      // no removal needed
+      // 1) Remove the first drawn card
+      const deckSnap = await get(deckRef);
+      let deck = deckSnap.val() || [];
+      deck = deck.filter(c => c.text !== state.drawnCards[0].text);
+      await set(deckRef, deck);
+
+      // 2) Clear drawn cards and persist
+      state.drawnCards = [];
+      await update(stateRef, state);
+
+      // 3) Base multiplier for Stage 4 cash‑out (4×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
-      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
-        ? (pdata.multipliers?.[3] || 4) + (bet / pdata.lastBalanceBeforeBet)
-        : (pdata.multipliers?.[3] || 4);
-      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
+      let multiplier = pdata.multipliers?.[3] || multipliers[3];
 
+      // 4) Burn card modifiers
+      if (pdata.bonusPlus3Active) {
+        multiplier += 3;
+        await update(playerRef, { bonusPlus3Active: false });
+      }
+      if (pdata.bonusMult1_25Active) {
+        multiplier = Math.round(multiplier * 1.25);
+        await update(playerRef, { bonusMult1_25Active: false });
+      }
+
+      // 5) Bet‑modifiers
+      if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
+        multiplier += pdata.clutchKingCount;
+      }
+      if (pdata.snowballer && pdata.lastBalanceBeforeBet) {
+        multiplier += bet / pdata.lastBalanceBeforeBet;
+      }
+      if (pdata.allInBonus && pdata.isAllIn) {
+        multiplier *= 3;
+      }
+
+      // 6) Finish
       return endTurn(
         `Cashed out $${Math.floor(bet * multiplier)}`,
         Math.floor(bet * multiplier)
       );
     }
+
 
     const card4 = await drawUniqueCard(state.drawnCards, true);
     if (!card4) return endTurn('Deck is empty. Round ending early.', 0);
@@ -948,18 +1012,49 @@ async function handleGuess(guess, state) {
   // ─── Stage 5 ────────────────────────────────────────────────────────────────
   if (stage === 5) {
     if (guess === 'Cash Out') {
+      // 1) Remove the first drawn card
+      const deckSnap = await get(deckRef);
+      let deck = deckSnap.val() || [];
+      deck = deck.filter(c => c.text !== state.drawnCards[0].text);
+      await set(deckRef, deck);
+
+      // 2) Clear drawn cards and persist
+      state.drawnCards = [];
+      await update(stateRef, state);
+
+      // 3) Base multiplier for Stage 5 cash‑out (20×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
-      let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
-        ? (pdata.multipliers?.[4] || multipliers[4] || 20) + (bet / pdata.lastBalanceBeforeBet)
-        : (pdata.multipliers?.[4] || multipliers[4] || 20);
-      if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
+      let multiplier = pdata.multipliers?.[4] || multipliers[4];
 
+      // 4) Burn card modifiers
+      if (pdata.bonusPlus3Active) {
+        multiplier += 3;
+        await update(playerRef, { bonusPlus3Active: false });
+      }
+      if (pdata.bonusMult1_25Active) {
+        multiplier = Math.round(multiplier * 1.25);
+        await update(playerRef, { bonusMult1_25Active: false });
+      }
+
+      // 5) Bet‑modifiers
+      if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
+        multiplier += pdata.clutchKingCount;
+      }
+      if (pdata.snowballer && pdata.lastBalanceBeforeBet) {
+        multiplier += bet / pdata.lastBalanceBeforeBet;
+      }
+      if (pdata.allInBonus && pdata.isAllIn) {
+        multiplier *= 3;
+      }
+
+      // 6) Finish
       return endTurn(
         `Cashed out $${Math.floor(bet * multiplier)}`,
         Math.floor(bet * multiplier)
       );
     }
+
 
     const card5 = await drawUniqueCard(state.drawnCards, true);
     if (!card5) return endTurn('Deck is empty. Round ending early.', 0);
@@ -1153,24 +1248,36 @@ async function updateGameDOM(state) {
     options.forEach(opt => {
       const btn = document.createElement('button');
       if (opt === 'Cash Out') {
-        // compute your actual multiplier
         const baseKey  = stage - 1;
         const baseMult = pdata.multipliers?.[baseKey] ?? multipliers[baseKey];
-        let actualMult = (pdata.snowballer && pdata.lastBalanceBeforeBet)
-                       ? baseMult + (bet / pdata.lastBalanceBeforeBet)
-                       : baseMult;
-        if (pdata.allInBonus && pdata.isAllIn) actualMult *= 3;
-        // ─── Clutch King support ─────────────────────────────────
-        // if past halfway through your original max bets, add +count
+
+        let actualMult = baseMult;
+
+        // ─── card‑burn modifiers ───────────────────────────
+        if (pdata.bonusPlus3Active) {
+          actualMult += 3;
+        }
+        if (pdata.bonusMult1_25Active) {
+          actualMult = Math.round(actualMult * 1.25);
+        }
+
+        // ─── your existing bet‑modifiers ───────────────────
+        if (pdata.snowballer && pdata.lastBalanceBeforeBet) {
+          actualMult += bet / pdata.lastBalanceBeforeBet;
+        }
+        if (pdata.allInBonus && pdata.isAllIn) {
+          actualMult *= 3;
+        }
         if (
           pdata.clutchKingCount > 0 &&
           pdata.betsMade > maxBetsPerPlayer / 2
         ) {
           actualMult += pdata.clutchKingCount;
         }
-        // ─────────────────────────────────────────────────────────
+
         btn.textContent = `Cash Out (${actualMult.toFixed(2)}x)`;
       } else {
+        // show the guess option text for everything else
         btn.textContent = opt;
       }
       btn.onclick = () => {
@@ -1716,7 +1823,7 @@ async function showShopOptions(isWinner, playerData) {
     },
     "Clutch King": {
       name: "Clutch King",
-      desc: "Gain +1 multiplier on bets once you’re past halfway through your max bets (stackable)",
+      desc: "Gain +1 multiplier on bets once you're past halfway through your max bets (stackable)",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -1742,6 +1849,28 @@ async function showShopOptions(isWinner, playerData) {
                 .textContent = `Tokens: ${tokens - 1}`;
       }
     },
+    "Kingpin": {
+      name: "Kingpin",
+      desc: "Whenever a King appears, increase your win multiplier by 1 (stackable)",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+        // stack one more Kingpin
+        const newCount = (data.kingpinCount || 0) + 1;
+        const history  = data.modifierHistory || [];
+        history.push(`Kingpin x${newCount}`);
+        await update(playerRef, {
+          kingpinCount:      newCount,
+          purchaseTokens:    tokens - 1,
+          modifierHistory:   history
+        });
+        alert(`🃏 Kingpin purchased! From now on, each King drawn gives you +1 this round's multiplier.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+
     "Bonus Interest": {
       name: "Bonus Interest",
       desc: "Earn +10% of your balance at the start of your turn",
@@ -1876,12 +2005,12 @@ async function showShopOptions(isWinner, playerData) {
   // Decide which card‐upgrade effects to show
   const allEffects = [
   '+1 bet',
-  'bonus_cash_25',
+  'Gain 25% of bet',
   'remove_card',
-  'bonus_cash_10',
+  'Gain 10% of Balance',
   'duplicate_card',
-  'bonus_mult_3',
-  'bonus_mult_1_25',
+  '+3 Mult',
+  '1.25x Mult',
   ];
   const effectsToShow = playerData.offeredEffects 
                       || allEffects.sort(() => Math.random() - 0.5)
@@ -1889,7 +2018,9 @@ async function showShopOptions(isWinner, playerData) {
 
   // Render the Card Upgrade shop
   const cardDiv = document.getElementById('cardUpgradeArea');
-  cardDiv.innerHTML = '<strong>Card Upgrade</strong>';
+  cardDiv.innerHTML =
+    '<div style="width:100%; text-align:center; font-weight:bold; margin-bottom:0.5rem;">Card Upgrade</div>';
+
 
   const upgradeFlex = document.createElement('div');
   upgradeFlex.style.display = 'flex';
@@ -1915,12 +2046,12 @@ async function showShopOptions(isWinner, playerData) {
     // Human‐readable description of the offered upgrade
     const desc = document.createElement('p');
     if (effectText === '+1 bet')             desc.textContent = '+1 bet if drawn';
-    else if (effectText === 'bonus_cash_25') desc.textContent = 'Gain 25% of your bet';
-    else if (effectText === 'bonus_cash_10') desc.textContent = 'Gain 10% of your balance';
+    else if (effectText === 'Gain 25% of bet') desc.textContent = 'Gain 25% of your bet';
+    else if (effectText === 'Gain 10% of Balance') desc.textContent = 'Gain 10% of your balance';
     else if (effectText === 'remove_card')   desc.textContent = 'Remove this card from your deck';
     else if (effectText === 'duplicate_card')desc.textContent = 'Duplicate this card into your deck';
-    else if (effectText === 'bonus_mult_3')  desc.textContent = '+3 multiplier when drawn';
-    else if (effectText === 'bonus_mult_1_25') desc.textContent = '1.25x multiplier when drawn';
+    else if (effectText === '+3 Mult')  desc.textContent = '+3 multiplier when drawn';
+    else if (effectText === '1.25x Mult') desc.textContent = '1.25x multiplier when drawn';
 
     box.appendChild(desc);
 
@@ -1930,93 +2061,73 @@ async function showShopOptions(isWinner, playerData) {
     if ((playerData.purchaseTokens || 0) <= 0) btn.disabled = true;
 
     btn.onclick = async () => {
-  const snap   = await get(playerRef);
-  const latest = snap.val() || {};
-  const tokens = latest.purchaseTokens || 0;
-  if (tokens <= 0) return alert("You don't have any tokens left!");
+      // 1️⃣ Fetch freshest player data
+      const snap   = await get(playerRef);
+      const latest = snap.val() || {};
+      const tokens = latest.purchaseTokens || 0;
+      if (tokens <= 0) return alert("You don't have any tokens left!");
 
-  const history = latest.modifierHistory || [];
-  const updates = { purchaseTokens: tokens - 1 };
+      // 2️⃣ Map effect‐codes → human descriptions
+      const mapDesc = {
+        '+1 bet':          `+1 bet if drawn`,
+        'Gain 25% of bet':   `Gain 25% of your bet`,
+        'Gain 10% of Balance':   `Gain 10% of your balance`,
+        'remove_card':     `Remove this card from your deck`,
+        'duplicate_card':  `Duplicate this card into your deck`,
+        '+3 Mult':    `+3 multiplier when drawn`,
+        '1.25x Mult': `1.25x multiplier when drawn`
+      };
 
-  if (effectText === 'remove_card') {
-    // — REMOVE CARD —
-    const cardUpgrades = latest.cardUpgrades || [];
-    // remove any previous upgrade on this card
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: 'remove_card' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`Remove ${upgradeCard.text} from deck`);
-    btn.textContent = 'Removed';
-  }
-  else if (effectText === 'duplicate_card') {
-    // — DUPLICATE CARD —
-    const dupCounts = latest.duplicateCounts || {};
-    const newCount  = (dupCounts[upgradeCard.text] || 0) + 1;
-    dupCounts[upgradeCard.text] = newCount;
-    updates.duplicateCounts = dupCounts;
-    history.push(`Duplicate ${upgradeCard.text} (×${newCount})`);
-    btn.textContent = 'Duplicated';
-  }
-  else if (effectText === 'bonus_cash_25') {
-    // — GAIN 25% OF YOUR BET —
-    const cardUpgrades = latest.cardUpgrades || [];
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_cash_25' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`Gain 25% of bet on ${upgradeCard.text}`);
-    btn.textContent = 'Upgraded';
-  }
-  else if (effectText === 'bonus_cash_10') {
-    // — GAIN 10% OF YOUR BALANCE —
-    const cardUpgrades = latest.cardUpgrades || [];
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_cash_10' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`Gain 10% of balance on ${upgradeCard.text}`);
-    btn.textContent = 'Upgraded';
-  }
-  else if (effectText === '+1 bet') {
-    // — +1 BET WHEN DRAWN —
-    const cardUpgrades = latest.cardUpgrades || [];
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: '+1 bet' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`+1 bet if ${upgradeCard.text} drawn`);
-    btn.textContent = 'Upgraded';
-  }
-  else if (effectText === 'bonus_mult_3') {
-    const cardUpgrades = latest.cardUpgrades || [];
-    // remove any previous upgrade on this card
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_mult_3' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`+3 multiplier on ${upgradeCard.text}`);
-    btn.textContent = 'Upgraded';
-  }
-  else if (effectText === 'bonus_mult_1_25') {
-    const cardUpgrades = latest.cardUpgrades || [];
-    const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-    if (oldIdx !== -1) cardUpgrades.splice(oldIdx, 1);
-    cardUpgrades.push({ text: upgradeCard.text, effect: 'bonus_mult_1_25' });
-    updates.cardUpgrades = cardUpgrades;
-    history.push(`1.25x multiplier on ${upgradeCard.text}`);
-    btn.textContent = 'Upgraded';
-  }
+      // 3️⃣ Prepare history & upgrade arrays
+      const history      = latest.modifierHistory || [];
+      const cardUpgrades = latest.cardUpgrades   || [];
+      const dupCounts    = latest.duplicateCounts || {};
 
+      // 4️⃣ Check for an existing upgrade on this card
+      const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+      let entryText;
 
-  // finally, persist history and tokens
-  updates.modifierHistory = history;
-  await update(playerRef, updates);
+      if (oldIdx !== -1) {
+        // Replacing an old effect
+        const oldCode = cardUpgrades[oldIdx].effect;
+        const oldDesc = mapDesc[oldCode] || oldCode;
+        const newDesc = mapDesc[effectText];
+        entryText = `${upgradeCard.text}: Replaced with ${newDesc}`;
+        cardUpgrades.splice(oldIdx, 1);
+      } else {
+        // First‐time upgrade
+        const newDesc = mapDesc[effectText];
+        entryText = `${upgradeCard.text}: ${newDesc}`;
+      }
 
-  btn.disabled = true;
-  document.getElementById('playerTokens')
-          .textContent = `Tokens: ${tokens - 1}`;
-};
+      // 5️⃣ Apply the new effect
+      if (effectText === 'duplicate_card') {
+        // handle stacking duplicates
+        const newCount = (dupCounts[upgradeCard.text] || 0) + 1;
+        dupCounts[upgradeCard.text] = newCount;
+        history.push(`Duplicate ${upgradeCard.text} (x${newCount})`);
+      } else {
+        // all other card‐upgrades go here
+        cardUpgrades.push({ text: upgradeCard.text, effect: effectText });
+        history.push(entryText);
+      }
+
+      // 6️⃣ Build update payload
+      const updates = {
+        purchaseTokens:   tokens - 1,
+        modifierHistory:  history,
+        duplicateCounts:  dupCounts,
+        cardUpgrades
+      };
+
+      // 7️⃣ Persist and update UI
+      await update(playerRef, updates);
+      btn.disabled = true;
+      btn.textContent = oldIdx === -1 ? 'Upgraded' : 'Replaced';
+      document.getElementById('playerTokens')
+              .textContent = `Tokens: ${tokens - 1}`;
+    };
+
     box.appendChild(btn);
     upgradeFlex.appendChild(box);
   });
@@ -2145,7 +2256,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "All In Bonus","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King",
+  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin",
 ];
 
 const everymodifierkey = [
@@ -2169,12 +2280,12 @@ const everymodifierkey = [
     const upgradeCard = getRandomCardFromDeck();
     const possibleEffects = [
       '+1 bet',
-      'bonus_cash_25',
+      'Gain 25% of bet',
       'remove_card',
-      'bonus_cash_10',
+      'Gain 10% of Balance',
       'duplicate_card',
-      'bonus_mult_3',
-      'bonus_mult_1_25',
+      '+3 Mult',
+      '1.25x Mult',
     ];
     const effectsToShow = isWinner ? 3 : 2;
     const randomEffects = [...possibleEffects].sort(() => Math.random() - 0.5).slice(0, effectsToShow);
