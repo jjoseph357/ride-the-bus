@@ -2140,7 +2140,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
     },
     "Faceless": {
       name: "Faceless",
-      desc: "Remove all J/Q/K from your draws (can stack purchases)",
+      desc: "Remove all J/Q/K from your draws",
       apply: async () => {
         const data   = (await get(playerRef)).val() || {};
         const tokens = data.purchaseTokens || 0;
@@ -2969,7 +2969,7 @@ async function checkRoundCompletion() {
       // compute their true starting balance (honoring any boost)
       const startMult = pdata.startBalanceMultiplier || 1;
       const newBalance = Math.floor(100 * startMult);
-      
+
       // 🎉 they beat it: win & reset for next round
       await update(playerRef, {
         roundsWon:         (solo.roundsWon||0) + 1,
