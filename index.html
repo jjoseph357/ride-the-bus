@@ -158,7 +158,7 @@
   <div class="lobby" id="lobby">
     <h2>Join or Create a Game</h2>
     <input type="text" id="playerName" placeholder="Your Name" />
-    <input type="text" id="lobbyCode" placeholder="Lobby Code (6 chars)" maxlength="6" />
+    <input type="text" id="lobbyCode" placeholder="Lobby Code (4 digits)" maxlength="4" />
     <h1></h1>
     <button id="joinGameBtn">Join Game</button>
     <h3></h3>
@@ -340,7 +340,7 @@ window.addEventListener("DOMContentLoaded", () => {
     
     function generateLobbyCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      return Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     }
 
     window.createLobby = () => {
@@ -362,9 +362,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
       lobbyCode = document.getElementById('lobbyCode').value.trim().toUpperCase();
       const name = document.getElementById('playerName').value.trim();
-      if (!name || lobbyCode.length !== 6) {
+      if (!name || lobbyCode.length !== 4) {
         joiningInProgress = false;
-        return alert('Please enter a name and valid 6-char lobby code.');
+        return alert('Please enter a name and valid 4-char lobby code.');
       }
 
       const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
@@ -502,6 +502,14 @@ window.addEventListener("DOMContentLoaded", () => {
               localPlayer.balance = newBalance;
               alert(`💰 ${playerData.name}, you earned $${interest} in interest (${interestPercent}%)!`);
             }
+            if (playerData.cursedLoan) {
+              const penalty = Math.floor(playerData.balance * 0.20);
+              const newBalance = playerData.balance - penalty;
+              await update(playerRef, { balance: newBalance });
+              localPlayer.balance = newBalance;
+              alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+            }
+
 
 
             playTurnSound();
@@ -541,11 +549,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const players = snap.val();
   const playerCount = Object.keys(players).length;
 
-  // Determine max bets
-  if (playerCount >= 3) maxBetsPerPlayer = 6;
-  else if (playerCount >= 4) maxBetsPerPlayer = 5;
+  if (playerCount >= 6) maxBetsPerPlayer = 3;
   else if (playerCount >= 5) maxBetsPerPlayer = 4;
-  else if (playerCount >= 6) maxBetsPerPlayer = 3;
+  else if (playerCount >= 4) maxBetsPerPlayer = 5;
+  else if (playerCount >= 3) maxBetsPerPlayer = 6;
   else maxBetsPerPlayer = 8;
 
   const firstPlayerId = Object.keys(players)[0];
@@ -820,15 +827,26 @@ async function handleGuess(guess, state) {
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       if (pdata.stage1Fright) {
-        // give +1 bet bonus
         const roundBonus = pdata.roundBetBonus || 0;
-        await update(playerRef, {
-          roundBetBonus: roundBonus + 1,
-          stage1FrightArmed: true,     // next Cash Out gets penalty
-          stage1Fright: false          // consume the purchase
-        });
-        console.log("Stage 1 Fright triggered: +1 bet armed, penalty armed");
+        const triggerCount = pdata.stage1FrightTriggers || 0;
+
+        if (triggerCount < 3) {
+          const alreadyArmed = pdata.stage1FrightArmed;
+
+          await update(playerRef, {
+            roundBetBonus: roundBonus + 1,
+            stage1FrightTriggers: triggerCount + 1,
+            ...(alreadyArmed ? {} : { stage1FrightArmed: true })
+          });
+
+          console.log(`Stage 1 Fright triggered (${triggerCount + 1}/3): +1 bet granted` +
+                      (alreadyArmed ? '' : ', penalty armed'));
+        } else {
+          console.log("Stage 1 Fright limit reached for this round");
+        }
       }
+
+
       return endTurn('Wrong guess. You lose.', 0);
     }
 
@@ -898,19 +916,32 @@ async function handleGuess(guess, state) {
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
-        multiplier = multiplier / 1.5;
+        multiplier  = multiplier / 3;
         // clear the flag so it only applies once
         await update(playerRef, {
           stage1FrightArmed: false
         });
-        console.log("Stage 1 Fright penalty applied: lose 1.5x on this bet");
+        console.log("Stage 1 Fright penalty applied: lose 3x on this bet");
       }
 
       
-      return endTurn(
-        `Cashed out $${Math.floor(bet * multiplier)}`,
-        Math.floor(bet * multiplier)
-      );
+      const payout = Math.floor(bet * multiplier);
+
+      // 💰 Update balance and end turn
+      await endTurn(`Cashed out $${payout}`, payout);
+
+      // 💀 Cursed Loan logic (apply AFTER payout)
+      if (pdata.cursedLoan) {
+        const stageNum = 2;
+        const oldMults = pdata.multipliers || {};
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const newMults = { ...oldMults, [stageNum]: boosted };
+        await update(playerRef, { multipliers: newMults });
+        console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+      }
+
+      return;
+
     }
 
     const prevValue = state.drawnCards[0].value;
@@ -983,25 +1014,36 @@ async function handleGuess(guess, state) {
           roundBetBonus:       roundBonus + 1,
           bonusPlusOneActive:  false   // clear the flag
         });
-        console.log(`Applied +1‑bet card upgrade on cash-out`);
+        console.log(`Applied +1-bet card upgrade on cash-out`);
       }
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
-        multiplier = multiplier / 1.5;
+        multiplier = multiplier / 3;
         // clear the flag so it only applies once
         await update(playerRef, {
           stage1FrightArmed: false
         });
-        console.log("Stage 1 Fright penalty applied: lose 1.5x on this bet");
+        console.log("Stage 1 Fright penalty applied: lose 3x on this bet");
       }
 
 
-      // 6) Finish
-      return endTurn(
-        `Cashed out $${Math.floor(bet * multiplier)}`,
-        Math.floor(bet * multiplier)
-      );
+      const payout = Math.floor(bet * multiplier);
+
+      // 💰 Update balance and end turn
+      await endTurn(`Cashed out $${payout}`, payout);
+
+      // 💀 Cursed Loan logic (apply AFTER payout)
+      if (pdata.cursedLoan) {
+        const stageNum = 3;
+        const oldMults = pdata.multipliers || {};
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const newMults = { ...oldMults, [stageNum]: boosted };
+        await update(playerRef, { multipliers: newMults });
+        console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+      }
+
+      return;
     }
 
     const card3 = await drawUniqueCard(state.drawnCards, true);
@@ -1075,24 +1117,35 @@ async function handleGuess(guess, state) {
           roundBetBonus:       roundBonus + 1,
           bonusPlusOneActive:  false   // clear the flag
         });
-        console.log(`Applied +1‑bet card upgrade on cash-out`);
+        console.log(`Applied +1-bet card upgrade on cash-out`);
       }
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
-        multiplier = multiplier / 1.5;
+        multiplier = multiplier / 3;
         // clear the flag so it only applies once
         await update(playerRef, {
           stage1FrightArmed: false
         });
-        console.log("Stage 1 Fright penalty applied: lose 1.5x on this bet");
+        console.log("Stage 1 Fright penalty applied: lose 3x on this bet");
       }
 
 
-      // 6) Finish
-      return endTurn(
-        `Cashed out $${Math.floor(bet * multiplier)}`,
-        Math.floor(bet * multiplier)
-      );
+      const payout = Math.floor(bet * multiplier);
+
+      // 💰 Update balance and end turn
+      await endTurn(`Cashed out $${payout}`, payout);
+
+      // 💀 Cursed Loan logic (apply AFTER payout)
+      if (pdata.cursedLoan) {
+        const stageNum = 4;
+        const oldMults = pdata.multipliers || {};
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const newMults = { ...oldMults, [stageNum]: boosted };
+        await update(playerRef, { multipliers: newMults });
+        console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+      }
+
+      return;
     }
 
 
@@ -1168,20 +1221,31 @@ async function handleGuess(guess, state) {
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
-        multiplier = multiplier / 1.5;
+        multiplier = multiplier / 3;
         // clear the flag so it only applies once
         await update(playerRef, {
           stage1FrightArmed: false
         });
-        console.log("Stage 1 Fright penalty applied: lose 1.5x on this bet");
+        console.log("Stage 1 Fright penalty applied: lose 3x on this bet");
       }
 
 
-      // 6) Finish
-      return endTurn(
-        `Cashed out $${Math.floor(bet * multiplier)}`,
-        Math.floor(bet * multiplier)
-      );
+      const payout = Math.floor(bet * multiplier);
+
+      // 💰 Update balance and end turn
+      await endTurn(`Cashed out $${payout}`, payout);
+
+      // 💀 Cursed Loan logic (apply AFTER payout)
+      if (pdata.cursedLoan) {
+        const stageNum = 5;
+        const oldMults = pdata.multipliers || {};
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const newMults = { ...oldMults, [stageNum]: boosted };
+        await update(playerRef, { multipliers: newMults });
+        console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+      }
+
+      return;
     }
 
 
@@ -1209,10 +1273,23 @@ async function handleGuess(guess, state) {
         : (pdata.multipliers?.[5] || multipliers[5] || 500);
       if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
 
-      return endTurn(
-        `Unbelievable! Exact match! You win $${bet * multiplier}`,
-        bet * multiplier
+      const payout = Math.floor(bet * multiplier);
+
+      // 💰 Update balance and end turn
+      await endTurn(
+        `Unbelievable! Exact match! You win $${payout}`,
+        payout
       );
+
+      // 💀 Cursed Loan logic (apply AFTER payout)
+      if (pdata.cursedLoan) {
+        const stageNum = 2;
+        const oldMults = pdata.multipliers || {};
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const newMults = { ...oldMults, [stageNum]: boosted };
+        await update(playerRef, { multipliers: newMults });
+        console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+      }
     } else {
       await update(stateRef, { drawnCards: state.drawnCards });
       await emitFailure();
@@ -1402,6 +1479,9 @@ async function updateGameDOM(state) {
           pdata.betsMade > maxBetsPerPlayer / 2
         ) {
           actualMult += pdata.clutchKingCount;
+        }
+        if (pdata.stage1FrightArmed) {
+          actualMult = actualMult / 3;
         }
 
         btn.textContent = `Cash Out (${actualMult.toFixed(2)}x)`;
@@ -2054,23 +2134,28 @@ if (!document.getElementById('reshuffleShopBtn')) {
     },
     "Stage 1 Fright": {
       name: "Stage 1 Fright",
-      desc: "If you fail Stage 1: gain +1 bet and lose 1.5x penalty on your next bet",
+      desc: "If you fail Stage 1: gain +1 bet and lose 3x penalty on your next bet",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        if (data.stage1Fright) return alert("⚠️ You already have Stage 1 Fright and cannot purchase it again.");
+
+        if (tokens < 3) return alert("You don't have enough tokens.");
 
         const history = data.modifierHistory || [];
-        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 1.5x on next bet");
+        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet");
 
         await update(playerRef, {
-          purchaseTokens: tokens - 1,
+          purchaseTokens: tokens - 3,
           modifierHistory: history,
           stage1Fright: true    // flag that you own it
         });
 
-        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 1.5x.");
+        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x.");
+        document.getElementById('playerTokens')
+                .textContent = `Tokens: ${tokens - 3}`;
       }
     },
     "Witch's Cauldron": {
@@ -2084,20 +2169,30 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
         const fullDeck = buildPlayerDeck(data);
         const shuffled = [...fullDeck].sort(() => Math.random() - 0.5);
-        const selected = shuffled.slice(0, 7);
+        const prevMap = data.witchCauldronMap || {};
+        const alreadyUsed = Object.keys(prevMap); // card.text values already affected
 
-        const cauldronMap = {};
-        const suits = ['♠', '♥', '♦', '♣', '☾', '★'];
+        // You can re-affect cards already in the map
+        const available = shuffled.slice(0, 7);
+
+        const newMap = {};
+        const suits = data.addBlueSuits
+          ? ['♠', '♥', '♦', '♣', '☾', '★']
+          : ['♠', '♥', '♦', '♣'];
+        const sharedSuit = suits[Math.floor(Math.random() * suits.length)];        
         const sharedValue = Math.floor(Math.random() * 13) + 2; // 2–14
-        const sharedSuit = suits[Math.floor(Math.random() * suits.length)];
 
-        selected.forEach(c => {
-          cauldronMap[c.text] = { value: sharedValue, suit: sharedSuit };
+        available.forEach(c => {
+          newMap[c.text] = { value: sharedValue, suit: sharedSuit };
         });
+
+        // Merge with previous cauldronMap
+        const mergedMap = { ...prevMap, ...newMap };
+
 
 
         await update(playerRef, {
-          witchCauldronMap: cauldronMap,
+          witchCauldronMap: mergedMap,
           purchaseTokens: tokens - 1,
           modifierHistory: [
             ...(data.modifierHistory || []),
@@ -2109,6 +2204,34 @@ if (!document.getElementById('reshuffleShopBtn')) {
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
+    "Cursed Loan": {
+      name: "Cursed Loan",
+      desc: "Start of turn: lose 20% of your balance. Cash out: +1 multiplier for that stage (permanent)",
+      apply: async () => {
+        const snap = await get(playerRef);
+        const data = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        if (data.cursedLoan) return alert("💀 You already have Cursed Loan and cannot purchase it again.");
+
+        if (tokens < 3) return alert("You don't have enough tokens.");
+
+        // Mark the player as cursed
+        await update(playerRef, {
+          cursedLoan: true,
+          purchaseTokens: tokens - 3,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            "Cursed Loan: -20% balance at start, +1 multiplier on cash out"
+          ]
+        });
+
+        alert("💀 You've taken the Cursed Loan! Each turn will cost you 20%, but your multipliers will grow.");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+
+      }
+    },
+
 
     "Bonus Interest": {
       name: "Bonus Interest",
@@ -2276,6 +2399,11 @@ if (!document.getElementById('reshuffleShopBtn')) {
     ].includes(name)) {
       cost = 2;
     }
+    if ([
+      "Stage 1 Fright", "Cursed Loan"
+    ].includes(name)) {
+      cost = 3;
+    }
 
     // compute dynamic desc for Stage 1 Boost
     let desc = mod.desc;
@@ -2419,12 +2547,18 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
       // 5️⃣ Apply the new effect
       if (effectText === 'duplicate_card') {
-        // handle stacking duplicates
         const newCount = (dupCounts[upgradeCard.text] || 0) + 1;
         dupCounts[upgradeCard.text] = newCount;
         history.push(`Duplicate ${upgradeCard.text} (x${newCount})`);
+
+        // Also preserve any existing upgrade on this card
+        const existingUpgrade = (latest.cardUpgrades || []).find(u => u.text === upgradeCard.text);
+        if (existingUpgrade) {
+          // Just re-add the same upgrade (duplicates are okay since they're all applied at draw)
+          cardUpgrades.push({ text: upgradeCard.text, effect: existingUpgrade.effect });
+        }
       } else {
-        // all other card‐upgrades go here
+              // all other card‐upgrades go here
         cardUpgrades.push({ text: upgradeCard.text, effect: effectText });
         history.push(entryText);
       }
@@ -2531,7 +2665,8 @@ async function resetAllPlayers(players) {
       betsMade:     0,
       eliminated:   false,
       isRoundWinner: false,
-      roundBetBonus: 0
+      roundBetBonus: 0,
+      stage1FrightTriggers: 0,
     });
   }
 
@@ -2763,6 +2898,19 @@ async function showDeck() {
   grid.style.justifyContent = 'flex-start';
 
   deck.forEach(card => {
+
+    // override suit/value if Witch’s Cauldron applies
+    if (playerData.witchCauldronMap?.[card.text]) {
+      const { value, suit } = playerData.witchCauldronMap[card.text];
+      card.suit = suit;
+      card.value = value;
+      card.text = (value === 14 ? 'A' :
+                  value === 13 ? 'K' :
+                  value === 12 ? 'Q' :
+                  value === 11 ? 'J' : value.toString()) + suit;
+      card._cauldron = true;
+    }
+
     // find if this exact card has an upgrade
     const match = upgrades.find(u => u.text === card.text);
 
