@@ -2962,10 +2962,15 @@ async function checkRoundCompletion() {
 
     if (solo.balance >= currentThresh) {
       // 🎉 they beat it: win & reset for next round
-      await update(playerRef, { roundsWon: (solo.roundsWon||0) + 1 });
-
+      await update(playerRef, {
+        roundsWon:         (solo.roundsWon||0) + 1,
+        balance:           newBalance,    // reset to starting money
+        betsMade:          0,      // reset bet count
+        roundBetBonus:     0,      // clear any per‑round bonus
+        stage1FrightTriggers: 0    // reset Stage 1 Fright count
+      });
       // bump threshold
-      const nextThresh = currentThresh + 100;
+      const nextThresh = Math.floor(currentThresh * 1.15);
       await set(stateRef, {
         gameStarted:    true,
         currentPlayer:  playerId,
