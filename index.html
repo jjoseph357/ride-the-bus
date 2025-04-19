@@ -2111,6 +2111,40 @@ if (!document.getElementById('reshuffleShopBtn')) {
                 .textContent = `Tokens: ${tokens - 1}`;
       }
     },
+    "Summon Kings": {
+      name: "Summon Kings",
+      desc: "Add 1 King of each suit to your deck (includes blue suits if owned)",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        if (tokens < 1) return alert("You don't have enough tokens.");
+
+        const suits = ['♠', '♥', '♦', '♣'];
+        if (data.addBlueSuits) suits.push('☾', '★');
+
+        const dupCounts = data.duplicateCounts || {};
+
+        for (const suit of suits) {
+          const cardText = 'K' + suit;
+          dupCounts[cardText] = (dupCounts[cardText] || 0) + 1;
+        }
+
+        const history = data.modifierHistory || [];
+        history.push("Summon Kings: Added 1 King of each suit");
+
+        await update(playerRef, {
+          duplicateCounts: dupCounts,
+          purchaseTokens: tokens - 1,
+          modifierHistory: history
+        });
+
+        alert("🃏 You summoned the Kings! One King of each suit has been added to your deck.");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
+
     "Kingpin": {
       name: "Kingpin",
       desc: "Whenever a King appears, increase your win multiplier by 1 (stackable)",
@@ -2709,7 +2743,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-  "Cursed Loan"
+  "Cursed Loan", "Summon Kings"
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
