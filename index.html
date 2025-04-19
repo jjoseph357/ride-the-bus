@@ -2961,6 +2961,15 @@ async function checkRoundCompletion() {
     const currentThresh = Math.floor(currentState.threshold || 100);
 
     if (solo.balance >= currentThresh) {
+
+      // pull in the latest player data so we see their startBalanceMultiplier
+      const psnap     = await get(playerRef);
+      const pdata     = psnap.val() || {};
+
+      // compute their true starting balance (honoring any boost)
+      const startMult = pdata.startBalanceMultiplier || 1;
+      const newBalance = Math.floor(100 * startMult);
+      
       // 🎉 they beat it: win & reset for next round
       await update(playerRef, {
         roundsWon:         (solo.roundsWon||0) + 1,
