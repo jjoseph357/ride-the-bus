@@ -131,6 +131,61 @@
     font-size: 1.1rem;
     margin-bottom: 0.5rem;
   }
+  /* —————— Overlays —————— */
+  #deckModal:not(.hidden), #gameOverModal:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    backdrop-filter: blur(5px);
+  }
+  #deckModal h2, #gameOverModal h2 {
+    font-size: 2.2rem;
+    margin-bottom: 1rem;
+  }
+  #deckContent, #gameOverContent {
+    width: 90%;
+    max-width: 600px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    margin-bottom: 1.5rem;
+  }
+
+  /* —————— Main game container —————— */
+  #gameUI {
+    max-width: 640px;
+    width: 100%;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    background: rgba(255,255,255,0.08);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  /* Buttons */
+  #gameOverModal button,
+  #deckModal button,
+  #gameUI button {
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  #gameOverModal button:hover,
+  #deckModal button:hover,
+  #gameUI button:hover {
+    transform: translateY(-2px);
+    background: #ff6a4b;
+  }
+
+  /* Nice typography */
+  body, #gameUI, #deckModal, #gameOverModal {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  #gameOverModal p, #gameOverModal ul {
+    line-height: 1.5;
+    max-width: 600px;
+  }
+
 
   </style>
 
@@ -143,16 +198,27 @@
   </div>
 
   <!-- Deck modal (hidden by default) -->
-  <div id="deckModal" class="hidden" 
-        style="position: fixed; top:0; left:0; width:100%; height:100%; 
-              background: rgba(0,0,0,0.8); color:#fff; overflow:auto; padding:2rem; z-index:1001;">
-  
-    <button id="closeDeckBtn" 
-      style="position:fixed; top:1rem; right:1rem; font-size:1.2rem; z-index:1002;">
-      ✕ Close
+  <div id="deckModal" class="hidden"
+    style="position: fixed; top:0; left:0; width:100%; height:100%;
+          background: rgba(0,0,0,0.8); color:#fff; overflow:auto; padding:2rem; z-index:1003;">
+
+  <button id="closeDeckBtn" 
+  style="position:fixed; top:1rem; right:4rem; font-size:1.2rem; z-index:1002;">
+  ✕ Close
+  </button>
+  <h2>My Deck & Upgrades</h2>
+  <div id="deckContent" style="margin-top:1rem;"></div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameOverModal" class="hidden"
+      style="position:fixed; top:0; left:0; width:100%; height:100%;
+            background:rgba(0,0,0,0.9); color:#fff; padding:2rem; z-index:1002; overflow:auto;">
+    <h2>Game Over</h2>
+    <div id="gameOverContent" style="margin-bottom:1rem;"></div>
+    <button id="playAgainBtn" style="padding:0.75rem 1.5rem; font-size:1.1rem; border:none; border-radius:5px; background:#ff4b2b; cursor:pointer;">
+      Play Again
     </button>
-    <h2>My Deck & Upgrades</h2>
-    <div id="deckContent" style="margin-top:1rem;"></div>
   </div>
 
   <div class="lobby" id="lobby">
@@ -175,11 +241,20 @@
       <button id="startTurnBtn">Start Turn</button>
 
     </div>
+    <div id="targetThreshold" style="
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #ffd700;
+      margin-bottom: 0.75rem;
+      margin-top: 0.75rem;
+      text-align: center;
+  ">Target: $0</div>
     
       
     <div class="guesses" id="guessButtons"></div>
     <div class="card-area" id="cardArea"></div>
-    <div class="status" id="status"></div>
+    <div class="status" id="status"></div> 
+  
     <div id="timerBarContainer" style="width: 100%; max-width: 400px; height: 20px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 10px;">
         <div id="timerBar" style="width: 100%; height: 100%; background: gold; transition: width 1s linear;"></div>
     </div>
@@ -224,6 +299,9 @@
     4: 20,
     5: 500
   };
+  
+  let soloMode = false;
+
 
   async function displayMultipliers() {
   const list = document.getElementById("multiplierBonuses");
@@ -319,7 +397,7 @@ window.addEventListener("DOMContentLoaded", () => {
       status: `${localPlayer.name} - Stage 1: Red or Black?`
     });
 
-    startCountdown(20, () => {
+    if (!soloMode) startCountdown(20, () => {
       endTurn("Ran out of time! You lose.", 0);
     });
     
@@ -337,6 +415,8 @@ window.addEventListener("DOMContentLoaded", () => {
     let countdownTimeout = null;
     let maxBetsPerPlayer = 10;
     let correctGuessCount = 0;
+    let guessLock = false;
+
     
     function generateLobbyCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -390,7 +470,7 @@ window.addEventListener("DOMContentLoaded", () => {
       localPlayer = {
         name,
         balance: 100,
-        score: 0,
+        highestBalance: 100,
         roundsWon: 0,
         betsMade: 0,
         eliminated: false,
@@ -429,6 +509,8 @@ window.addEventListener("DOMContentLoaded", () => {
           });
         });
         const players = snapshot.val();
+        soloMode = Object.keys(players).length === 1;
+
         if (!players) return;
         lobbyList.innerHTML = '<h3>Players in Lobby:</h3>' +
           Object.values(players).map(p => `<div>${p.name}</div>`).join('');
@@ -442,9 +524,11 @@ window.addEventListener("DOMContentLoaded", () => {
             isCurrent: id === currentId
           })));
         });
-      });
+      }
+    );
 
       onValue(stateRef, async (snapshot) => {
+        
         const state = snapshot.val();
         if (state) {
           if (state.gameStarted) {
@@ -513,9 +597,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
             playTurnSound();
-            startCountdown(20, () => {
-              endTurn("Ran out of time before starting turn!", 0);
-            });
+            if (!soloMode) {
+              startCountdown(20, () => {
+                endTurn("Ran out of time before starting turn!", 0);
+              });
+            }
           }
           lastKnownCurrentPlayer = currentId;
 
@@ -534,39 +620,70 @@ window.addEventListener("DOMContentLoaded", () => {
       joiningInProgress = false;
     };
 
-  window.startGame = () => {
-  const fullDeck = [];
-  const suits = ['♠', '♥', '♦', '♣'];
-  const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-  for (const suit of suits) {
-    for (const val of values) {
-      fullDeck.push({ text: val + suit, suit, value: val === 'A' ? 14 : val === 'K' ? 13 : val === 'Q' ? 12 : val === 'J' ? 11 : parseInt(val) });
-    }
-  }
-  fullDeck.sort(() => Math.random() - 0.5);
-  set(deckRef, fullDeck);
-  get(ref(db, `games/${lobbyCode}/players`)).then((snap) => {
-  const players = snap.val();
-  const playerCount = Object.keys(players).length;
+    window.startGame = async () => {
+      // 1) Build & shuffle the full deck
+      const fullDeck = [];
+      const suits = ['♠', '♥', '♦', '♣'];
+      const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+      for (const suit of suits) {
+        for (const val of values) {
+          fullDeck.push({
+            text: val + suit,
+            suit,
+            value:
+              val === 'A' ? 14 :
+              val === 'K' ? 13 :
+              val === 'Q' ? 12 :
+              val === 'J' ? 11 :
+              parseInt(val, 10)
+          });
+        }
+      }
+      fullDeck.sort(() => Math.random() - 0.5);
+      await set(deckRef, fullDeck);
 
-  if (playerCount >= 6) maxBetsPerPlayer = 3;
-  else if (playerCount >= 5) maxBetsPerPlayer = 4;
-  else if (playerCount >= 4) maxBetsPerPlayer = 5;
-  else if (playerCount >= 3) maxBetsPerPlayer = 6;
-  else maxBetsPerPlayer = 8;
+      // 2) Fetch players and count them
+      const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
+      const players     = playersSnap.val() || {};
+      const playerCount = Object.keys(players).length;
 
-  const firstPlayerId = Object.keys(players)[0];
-  set(stateRef, {
-    gameStarted: true,
-    currentPlayer: firstPlayerId,
-    currentStage: 0,
-    drawnCards: [],
-    status: `Waiting for ${players[firstPlayerId].name} to start their turn.`,
-    maxBetsPerPlayer: maxBetsPerPlayer
-  });
-});
+      // ───── SOLO MODE ─────
+      // If only one player, give 8 bets and set threshold
+      if (playerCount === 1) {
+        soloMode = true;
+        maxBetsPerPlayer = 8;
+        // initialize threshold at $100
+        await set(stateRef, {
+          gameStarted:      true,
+          currentPlayer:    playerId,
+          currentStage:     0,
+          drawnCards:       [],
+          threshold:        100,                                 
+          status:           `Survive the round! Beat $100`,
+          maxBetsPerPlayer
+        });
+        return;
+      }
 
-};
+      // ───── MULTIPLAYER FALLBACK ─────
+      if (playerCount >= 6)         maxBetsPerPlayer = 3;
+      else if (playerCount >= 5)    maxBetsPerPlayer = 4;
+      else if (playerCount >= 4)    maxBetsPerPlayer = 5;
+      else if (playerCount >= 3)    maxBetsPerPlayer = 6;
+      else                          maxBetsPerPlayer = 7;
+
+      const firstPlayerId = Object.keys(players)[0];
+      await set(stateRef, {
+        gameStarted:      true,
+        currentPlayer:    firstPlayerId,
+        currentStage:     0,
+        drawnCards:       [],
+        status:           `Waiting for ${players[firstPlayerId].name} to start their turn.`,
+        maxBetsPerPlayer
+      });
+    };
+
+
 
 async function applyCardUpgradeBonus(card) {
   const snap = await get(playerRef);
@@ -1339,6 +1456,14 @@ async function endTurn(message, payout) {
     await update(playerRef, { balance: localPlayer.balance });
   }
 
+  // fetch fresh player data
+  const pdata = (await get(playerRef)).val() || {};
+  const prevHigh = pdata.highestBalance ?? localPlayer.balance;
+  if (localPlayer.balance > prevHigh) {
+    await update(playerRef, { highestBalance: localPlayer.balance });
+  }
+
+
   // ✅ Only update betsMade if we're still below the max
   if (prevBets < effectiveMax) {
     localPlayer.betsMade = newBets;
@@ -1410,6 +1535,16 @@ async function endTurn(message, payout) {
 async function updateGameDOM(state) {
   // 1) Update the status line
   document.getElementById('status').textContent = state.status || '';
+  // show/hide targetThreshold
+  const threshEl = document.getElementById('targetThreshold');
+  if (soloMode && (state.threshold)) {
+    // always overwrite whatever's in the box
+    threshEl.textContent = `Target: $${state.threshold}`;
+  } else {
+    // optionally clear it if you ever leave solo mode
+    threshEl.textContent = '';
+  }
+
 
   // 2) Fetch the *current* player's data (so everyone sees THEIR upgrades glowing)
   const currentPlayerId   = state.currentPlayer;
@@ -1489,14 +1624,24 @@ async function updateGameDOM(state) {
         // show the guess option text for everything else
         btn.textContent = opt;
       }
-      btn.onclick = () => {
+      btn.addEventListener('click', async () => {
+        if (guessLock) return;           // already handling a guess?
+        guessLock = true;                // lock out further clicks
         clearCountdown();
-        handleGuess(opt, state);
-      };
+        // disable all guess buttons immediately
+        guessArea.querySelectorAll('button').forEach(b => b.disabled = true);
+        try {
+          await handleGuess(opt, state); // wait until the guess logic completes
+        } finally {
+          guessLock = false;             // unlock for the next round
+        }
+      });
+
       guessArea.appendChild(btn);
     });
 
-    startCountdown(20, () => endTurn("Ran out of time! You lose.", 0));
+
+    if (!soloMode) startCountdown(20, () => endTurn("Ran out of time! You lose.", 0));
   }
 
   // 5) Finally, update the multiplier list
@@ -1531,7 +1676,6 @@ players.forEach((p) => {
     box.innerHTML = `
     <strong>${p.name} ${isLeader ? '👑' : ''}</strong><br>
     Balance: $${p.balance}<br>
-    Score: ${p.score}<br>
     Rounds Won: ${p.roundsWon}<br>
     Bets Made: ${p.betsMade || 0}/${maxBetsPerPlayer + permBonus + roundBonus}
     ${p.eliminated ? '<em>Eliminated</em>' : ''}
@@ -2780,6 +2924,7 @@ async function grantTokenAndShowShop(winners) {
 }
 
 async function checkRoundCompletion() {
+  
   const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
   const players = playersSnap.val();
   const activePlayers = Object.values(players).filter(p => !p.eliminated);
@@ -2792,35 +2937,48 @@ async function checkRoundCompletion() {
   const currentState = currentStateSnap.val();
   const currentMaxBets = currentState?.maxBetsPerPlayer || 10;
 
+  // If solo and eliminated, show stats instead of looping rounds
+  if (isSoloMode) {
+    const solo = players[playerId] || {};
+    if (solo.eliminated) {
+      showGameOverScreen();
+      return;
+    }
+  }
   // SOLO MODE
   if (isSoloMode) {
-    const soloPlayer = Object.values(players)[0];
-    const snap = await get(playerRef);
-    const data = snap.val();
-    const bonus = data.betModifierBonus || 0;
+    const solo = Object.values(players)[0];
+    const bonus = solo.betModifierBonus || 0;
     const effectiveMax = maxBetsPerPlayer + bonus;
 
-    if (soloPlayer.betsMade < effectiveMax) return;
+    // still in the round?
+    if (solo.betsMade < effectiveMax) return;
 
-    const winners = [[playerId, soloPlayer]];
-    await update(ref(db, `games/${lobbyCode}/players/${playerId}`), {
-      roundsWon: (soloPlayer.roundsWon || 0) + 1
-    });
+    const currentThresh = Math.floor(currentState.threshold || 100);
 
-    await resetAllPlayers(players);
-    await reshuffleDeck();
-    await grantTokenAndShowShop(winners);
-    const currentStateSnap2 = await get(stateRef);
-    const stateObj = currentStateSnap2.val() || {};
-    await update(stateRef, { status: stateObj.status + ' ' });
-    await set(stateRef, {
-      gameStarted: true,
-      currentPlayer: playerId,
-      currentStage: 0,
-      drawnCards: [],
-      status: `Waiting for ${soloPlayer.name} to start their turn.`,
-      maxBetsPerPlayer: currentMaxBets
-    });
+    if (solo.balance >= currentThresh) {
+      // 🎉 they beat it: win & reset for next round
+      await update(playerRef, { roundsWon: (solo.roundsWon||0) + 1 });
+
+      // bump threshold
+      const nextThresh = currentThresh + 100;
+      await set(stateRef, {
+        gameStarted:    true,
+        currentPlayer:  playerId,
+        currentStage:   0,
+        drawnCards:     [],
+        threshold:      nextThresh,
+        status:         `Next round! Beat $${nextThresh}`,
+        maxBetsPerPlayer
+      });
+
+      // refresh deck & shop
+      await reshuffleDeck();
+      await grantTokenAndShowShop([[playerId, solo]]);
+    } else {
+      // ☠️ failed to meet threshold → game over
+      showGameOverScreen();
+    }
 
     return;
   }
@@ -2965,6 +3123,34 @@ async function showDeck() {
   // 4) show the modal
   document.getElementById('deckModal').classList.remove('hidden');
 }
+
+async function showGameOverScreen() {
+  // fetch final stats
+  const snap = await get(playerRef);
+  const p    = snap.val() || {};
+
+  const content = document.getElementById('gameOverContent');
+  content.innerHTML = `
+    <p><strong>Rounds survived:</strong> ${p.roundsWon || 0}</p>
+    <p><strong>Bets played:</strong> ${p.betsMade || 0}</p>
+    <p><strong>Highest Balance Reached:</strong> $${p.highestBalance ?? p.balance}</p>
+    <h3>Purchased Modifiers</h3>
+    <ul>${(p.modifierHistory || []).map(m => `<li>${m}</li>`).join('') || '<li>None</li>'}</ul>
+    <h3>Card Upgrades</h3>
+    <ul>${(p.cardUpgrades || []).map(u => `<li>${u.text}: ${u.effect}</li>`).join('') || '<li>None</li>'}</ul>
+    <button id="viewDeckFromOver" style="margin-top:1rem; padding:0.5rem 1rem;">View Deck</button>
+  `;
+
+  // wire up “View Deck” to reuse your showDeck()
+  document.getElementById('viewDeckFromOver').onclick = showDeck;
+
+  document.getElementById('gameOverModal').classList.remove('hidden');
+}
+
+// Play Again just reloads the page (or you can fully reset state)
+document.getElementById('playAgainBtn').addEventListener('click', () => {
+  location.reload();
+});
 
 
 </script>
