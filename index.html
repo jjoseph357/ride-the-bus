@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ride the Bus1</title>
+  <title>Ride the Bus</title>
   <style>
     body {
       margin: 0;
@@ -1646,7 +1646,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield","Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller",
       "Ace & Two","Faceless","Remove 2-4","Starting Balance Boost","Humble Beginnings",
-      "Clutch King","Kingpin","Two-edged"
+      "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright"
     ];
     // shuffle and take the same count as before
     const stateSnap = await get(stateRef);
@@ -2005,7 +2005,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
     },
     "Clutch King": {
       name: "Clutch King",
-      desc: "Gain +1 multiplier on bets once you're past halfway through your max bets (stackable)",
+      desc: "Gain +1 multiplier on bets once you're past halfway through your max bets",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2573,7 +2573,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", 
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin","Two-edged"
+  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright"
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
