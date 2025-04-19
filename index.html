@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ride the Bus</title>
+  <title>Ride the Bus1</title>
   <style>
     body {
       margin: 0;
@@ -274,6 +274,8 @@ window.addEventListener("DOMContentLoaded", () => {
   if (startGameBtn) startGameBtn.addEventListener("click", startGame);
 
   if (startTurnBtn) startTurnBtn.addEventListener("click", async () => {
+    await update(playerRef, { interestAppliedForRound: false });
+
     const stateSnapPre = await get(stateRef);
     const statePre = stateSnapPre.val();
     if (statePre.currentStage !== 0) {
@@ -488,14 +490,19 @@ window.addEventListener("DOMContentLoaded", () => {
             const playerSnap = await get(playerRef);
             const playerData = playerSnap.val();
 
-            const interestPercent = playerData.interestPercent || 0;
-            if (interestPercent > 0) {
-              const interest = Math.floor(playerData.balance * (interestPercent / 100));
+            const interestPercent = playerData.interestPercent       || 0;
+            const alreadyApplied  = playerData.interestAppliedForRound;
+            if (interestPercent > 0 && !alreadyApplied) {
+              const interest   = Math.floor(playerData.balance * (interestPercent / 100));
               const newBalance = playerData.balance + interest;
-              await update(playerRef, { balance: newBalance });
+              await update(playerRef, {
+                balance:                 newBalance,
+                interestAppliedForRound: true
+              });
               localPlayer.balance = newBalance;
               alert(`💰 ${playerData.name}, you earned $${interest} in interest (${interestPercent}%)!`);
             }
+
 
             playTurnSound();
             startCountdown(20, () => {
@@ -535,12 +542,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const playerCount = Object.keys(players).length;
 
   // Determine max bets
-  if (playerCount >= 6) maxBetsPerPlayer = 3;
-  else if (playerCount >= 3) maxBetsPerPlayer = 6;
+  if (playerCount >= 3) maxBetsPerPlayer = 6;
   else if (playerCount >= 4) maxBetsPerPlayer = 5;
   else if (playerCount >= 5) maxBetsPerPlayer = 4;
-
-  else maxBetsPerPlayer = 10;
+  else if (playerCount >= 6) maxBetsPerPlayer = 3;
+  else maxBetsPerPlayer = 8;
 
   const firstPlayerId = Object.keys(players)[0];
   set(stateRef, {
@@ -573,6 +579,13 @@ async function applyCardUpgradeBonus(card) {
     });
 
     console.log(`Upgrade applied for ${card.text}: gained $${bonus}`);
+  }
+
+  // ─── New: +1‑bet card upgrade ───────────────────────────────
+  if (match.effect === '+1 bet') {
+    // set a one‑time flag so cash‑out logic knows to give +1 bet
+    await update(playerRef, { bonusPlusOneActive: true });
+    console.log(`+1‑bet card "${card.text}" drawn: bonus armed`);
   }
   
   if (match.effect === 'remove_card') {
@@ -734,6 +747,13 @@ Object.entries(dupCounts).forEach(([text, count]) => {
     }
 
     card = attempt;
+
+    if (data.witchCauldronMap && data.witchCauldronMap[attempt.text]) {
+      const { value, suit } = data.witchCauldronMap[attempt.text];
+      attempt.value = value;
+      attempt.suit = suit;
+      attempt._cauldron = true;
+    }
   }
 
   // 5️⃣ if it came from the shared deck, remove it there
@@ -866,11 +886,14 @@ async function handleGuess(guess, state) {
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
       const psnap2 = await get(playerRef);
       const pdata2 = psnap2.val() || {};
-      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
-      if (hasPlusOne) {
-        const roundBonus = pdata2.roundBetBonus || 0;
-        await update(playerRef, { roundBetBonus: roundBonus + 1 });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
+      // ─── Only if you actually drew the +1‑bet card ────────────
+      if (pdata.bonusPlusOneActive) {
+        const roundBonus = pdata.roundBetBonus || 0;
+        await update(playerRef, {
+          roundBetBonus:       roundBonus + 1,
+          bonusPlusOneActive:  false   // clear the flag
+        });
+        console.log(`Applied +1‑bet card upgrade on cash-out`);
       }
 
       // Stage 1 Fright penalty?
@@ -953,11 +976,14 @@ async function handleGuess(guess, state) {
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
       const psnap2 = await get(playerRef);
       const pdata2 = psnap2.val() || {};
-      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
-      if (hasPlusOne) {
-        const roundBonus = pdata2.roundBetBonus || 0;
-        await update(playerRef, { roundBetBonus: roundBonus + 1 });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
+      // ─── Only if you actually drew the +1‑bet card ────────────
+      if (pdata.bonusPlusOneActive) {
+        const roundBonus = pdata.roundBetBonus || 0;
+        await update(playerRef, {
+          roundBetBonus:       roundBonus + 1,
+          bonusPlusOneActive:  false   // clear the flag
+        });
+        console.log(`Applied +1‑bet card upgrade on cash-out`);
       }
 
       // Stage 1 Fright penalty?
@@ -1042,13 +1068,15 @@ async function handleGuess(guess, state) {
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
       const psnap2 = await get(playerRef);
       const pdata2 = psnap2.val() || {};
-      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
-      if (hasPlusOne) {
-        const roundBonus = pdata2.roundBetBonus || 0;
-        await update(playerRef, { roundBetBonus: roundBonus + 1 });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
+      // ─── Only if you actually drew the +1‑bet card ────────────
+      if (pdata.bonusPlusOneActive) {
+        const roundBonus = pdata.roundBetBonus || 0;
+        await update(playerRef, {
+          roundBetBonus:       roundBonus + 1,
+          bonusPlusOneActive:  false   // clear the flag
+        });
+        console.log(`Applied +1‑bet card upgrade on cash-out`);
       }
-
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
         multiplier = multiplier / 1.5;
@@ -1128,11 +1156,14 @@ async function handleGuess(guess, state) {
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
       const psnap2 = await get(playerRef);
       const pdata2 = psnap2.val() || {};
-      const hasPlusOne = (pdata2.cardUpgrades || []).some(u => u.effect === '+1 bet');
-      if (hasPlusOne) {
-        const roundBonus = pdata2.roundBetBonus || 0;
-        await update(playerRef, { roundBetBonus: roundBonus + 1 });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
+      // ─── Only if you actually drew the +1‑bet card ────────────
+      if (pdata.bonusPlusOneActive) {
+        const roundBonus = pdata.roundBetBonus || 0;
+        await update(playerRef, {
+          roundBetBonus:       roundBonus + 1,
+          bonusPlusOneActive:  false   // clear the flag
+        });
+        console.log(`Applied +1‑bet card upgrade on cash-out`);
       }
 
       // Stage 1 Fright penalty?
@@ -1656,7 +1687,11 @@ if (!document.getElementById('reshuffleShopBtn')) {
         const data = snap.val();
         const currentBonus = data.betModifierBonus || 0;
         const currentTokens = data.purchaseTokens || 0;
-        if (currentTokens <= 0) return alert("You don't have enough tokens.");
+        if (currentTokens < 2) return alert("You need 2 tokens to buy this.");
+          await update(playerRef, {
+            betModifierBonus: currentBonus + 2,
+            purchaseTokens:   currentTokens - 2
+          });
 
         // Apply the bonus
         await update(playerRef, {
@@ -1714,9 +1749,9 @@ if (!document.getElementById('reshuffleShopBtn')) {
         const tokens = data.purchaseTokens || 0;
 
         if (data.allInBonus) {
-          return alert("⚠️ You already have Hail Mary and cannot purchase it again.");
+          return alert("⚠️ You already have Hail Mary and cannot purchase it again.");
         }
-        if (tokens <= 0) {
+        if (tokens < 2) {
           return alert("You don't have enough tokens.");
         }
 
@@ -1725,13 +1760,13 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
         await update(playerRef, {
           allInBonus:      true,
-          purchaseTokens:  tokens - 1,
+          purchaseTokens:  tokens - 2,
           modifierHistory: history
         });
 
         alert("🎉 Hail Mary unlocked! If you go all-in, your multiplier will be doubled.");
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 1}`;
+                .textContent = `Tokens: ${tokens - 2}`;
       }
     },
 
@@ -1787,12 +1822,12 @@ if (!document.getElementById('reshuffleShopBtn')) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("You don't have enough tokens.");
+        if (tokens < 4) return alert("You don't have enough tokens.");
 
         // Mark this player as “removing” those suits
         await update(playerRef, {
           removeDiamondsClubs: true,
-          purchaseTokens:      tokens - 2
+          purchaseTokens:      tokens - 4
         });
 
         // Record in history
@@ -1801,7 +1836,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
         await update(playerRef, { modifierHistory: history });
 
         alert("All ♦ and ♣ will now be skipped in your draws!");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
       }
     },
 
@@ -2038,10 +2073,46 @@ if (!document.getElementById('reshuffleShopBtn')) {
         alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 1.5x.");
       }
     },
+    "Witch's Cauldron": {
+      name: "Witch's Cauldron",
+      desc: "7 random cards will now share the same random number",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens <= 0) return alert("You don't have enough tokens.");
+
+        const fullDeck = buildPlayerDeck(data);
+        const shuffled = [...fullDeck].sort(() => Math.random() - 0.5);
+        const selected = shuffled.slice(0, 7);
+
+        const cauldronMap = {};
+        const suits = ['♠', '♥', '♦', '♣', '☾', '★'];
+        const sharedValue = Math.floor(Math.random() * 13) + 2; // 2–14
+        const sharedSuit = suits[Math.floor(Math.random() * suits.length)];
+
+        selected.forEach(c => {
+          cauldronMap[c.text] = { value: sharedValue, suit: sharedSuit };
+        });
+
+
+        await update(playerRef, {
+          witchCauldronMap: cauldronMap,
+          purchaseTokens: tokens - 1,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Witch's Cauldron: 7 cards now act as ${sharedValue} of ${sharedSuit}`
+          ]
+        });
+
+        alert("🧪 Witch's Cauldron is bubbling! Those 7 cards now share the same number.");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+      }
+    },
 
     "Bonus Interest": {
       name: "Bonus Interest",
-      desc: "Earn +10% of your balance at the start of your turn (cost ↑ by 1 each time)",
+      desc: "Earn +5% of your balance at the start of your turn (cost ↑ by 1 each time)",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2055,11 +2126,11 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
         const newCount      = count + 1;
         const currentInterest = data.interestPercent || 0;
-        const newInterest     = currentInterest + 10;
+        const newInterest     = currentInterest + 5;
 
         // Record in history
         const history = data.modifierHistory || [];
-        history.push(`+10% Bonus interest (#${newCount})`);
+        history.push(`+5% Bonus interest (#${newCount})`);
 
         // Persist all updates in one go
         await update(playerRef, {
@@ -2081,7 +2152,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         const newCount = (data.remove7and8Count || 0) + 1;
         const history  = data.modifierHistory || [];
@@ -2089,12 +2160,12 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
         await update(playerRef, {
           remove7and8Count:   newCount,
-          purchaseTokens:     tokens - 1,
+          purchaseTokens:     tokens - 2,
           modifierHistory:    history
         });
 
         alert(`🚫 All 7s and 8s will now be skipped in your draws (purchased ${newCount}x).`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
 
@@ -2151,14 +2222,14 @@ if (!document.getElementById('reshuffleShopBtn')) {
             return alert(`⚠️ You already have Stage ${stage} Shield.`);
           }
 
-          if (tokens <= 0) return alert("You don't have enough tokens.");
+          if (tokens < 2) return alert("You don't have enough tokens.");
 
           const shields = data.shields || {};
           shields[stage] = 25; // percent
 
           await update(playerRef, {
             shields,
-            purchaseTokens: tokens - 1
+            purchaseTokens: tokens - 2
           });
 
           alert(`You are now protected on Stage ${stage}. You will recover 25% of your bet if you fail.`);
@@ -2167,7 +2238,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
           history.push(`Retain 25% of your bet if you fail on Stage ${stage}`);
 
           await update(playerRef, {
-            purchaseTokens: tokens - 1,
+            purchaseTokens: tokens - 2,
             modifierHistory: history
           });
 
@@ -2193,10 +2264,17 @@ if (!document.getElementById('reshuffleShopBtn')) {
 
     // calculate cost:
     let cost = 1; 
-    if (name === "Remove Diamonds & Clubs") cost = 2;
+    if (name === "Remove Diamonds & Clubs") cost = 4;
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
+    }
+    if ([
+      "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
+      "Stage 4 Shield","Stage 5 Shield",
+      "Hail Mary","Two-edged","Bonus Bets"
+    ].includes(name)) {
+      cost = 2;
     }
 
     // compute dynamic desc for Stage 1 Boost
@@ -2498,14 +2576,6 @@ async function grantTokenAndShowShop(winners) {
   "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin","Two-edged"
 ];
 
-const everymodifierkey = [
-  "Bonus Bets", "Super Multiplier", "Bonus Interest",
-  "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
-  "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
-  "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Two-edged"
-];
-
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
   const sharedBetModifiers = shuffled.slice(0, 4); // Change to 4+ if you want more choices
 
@@ -2514,7 +2584,7 @@ const everymodifierkey = [
 
   for (const [id, data] of Object.entries(players)) {
     const isWinner = winners.some(([winnerId]) => winnerId === id);
-    const newTokens = (data.purchaseTokens || 0) + 1;
+    const newTokens = (data.purchaseTokens || 0) + 2;
 
     const upgradeCard = getRandomCardFromDeck();
     const possibleEffects = [
