@@ -189,13 +189,42 @@
     line-height: 1.5;
     max-width: 600px;
   }
-
-
+  
   </style>
 
 </head>
 <body>
   <h1>Ride the Bus 🚌</h1>
+  <!-- ⚙️ Settings button, always visible -->
+  <button id="settingsBtn"
+          style="position:absolute; top:1rem; left:1rem; z-index:1000;">
+    ⚙️ Settings
+  </button>
+
+  <!-- Settings modal: starts hidden -->
+  <div id="settingsModal" class="hidden"
+      style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8);">
+    <div style="background:#222; padding:2rem; margin:auto; border-radius:8px; position:relative; max-width:300px;">
+      <!-- close button in the corner -->
+      <button id="closeSettingsBtn"
+              style="position:absolute; top:0.5rem; right:0.5rem; background:transparent; border:none; color:#fff; font-size:1.25rem; cursor:pointer;">
+        ✕
+      </button>
+
+      <h2 style="color:#fff;">Settings</h2>
+      <label style="color:#fff;">
+        <input type="checkbox" id="toggleInterest" />
+        Interest Alerts
+      </label><br/>
+      <label style="color:#fff;">
+        <input type="checkbox" id="toggleLoan" />
+        Cursed Loan Alerts
+      </label><br/><br/>
+      <button id="saveSettings" style="padding:0.5rem 1rem;">Save</button>
+    </div>
+  </div>
+
+
   <!-- My Deck button -->
   <div style="position: absolute; top: 1rem; right: 1rem; z-index:1000;">
     <button id="viewDeckBtn">My Deck</button>
@@ -283,6 +312,35 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getDatabase, ref, set, update, onValue, get, child, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+    // --- SETTINGS STATE ---
+    const settings = {
+      interestAlerts: true,
+      loanAlerts: true
+    };
+    // load any saved settings
+    try {
+      const saved = JSON.parse(localStorage.getItem('rtbSettings'));
+      Object.assign(settings, saved);
+    } catch (e) { }
+
+    // toggle the modal
+    const settingsBtn   = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    settingsBtn.onclick = () => settingsModal.classList.remove('hidden');
+    closeSettingsBtn.addEventListener('click', () => {
+      settingsModal.classList.add('hidden');
+    });
+    document.getElementById('saveSettings').onclick = () => {
+      settings.interestAlerts = document.getElementById('toggleInterest').checked;
+      settings.loanAlerts     = document.getElementById('toggleLoan').checked;
+      localStorage.setItem('rtbSettings', JSON.stringify(settings));
+      settingsModal.classList.add('hidden');
+    };
+    // initialize the checkbox states
+    document.getElementById('toggleInterest').checked = settings.interestAlerts;
+    document.getElementById('toggleLoan').checked     = settings.loanAlerts;
+
   const firebaseConfig = {
     apiKey: "AIzaSyD5Zu_Qsv3reVuB6PrombL954zSKHWPewY",
     authDomain: "ride-the-bus-d9f3f.firebaseapp.com",
@@ -576,27 +634,25 @@ window.addEventListener("DOMContentLoaded", () => {
             const playerSnap = await get(playerRef);
             const playerData = playerSnap.val();
 
-            const interestPercent = playerData.interestPercent       || 0;
-            const alreadyApplied  = playerData.interestAppliedForRound;
-            if (interestPercent > 0 && !alreadyApplied) {
-              const interest   = Math.floor(playerData.balance * (interestPercent / 100));
-              const newBalance = playerData.balance + interest;
-              await update(playerRef, {
-                balance:                 newBalance,
-                interestAppliedForRound: true
-              });
-              localPlayer.balance = newBalance;
-              alert(`💰 ${playerData.name}, you earned $${interest} in interest (${interestPercent}%)!`);
-            }
-            if (playerData.cursedLoan) {
-              const penalty = Math.floor(playerData.balance * 0.20);
-              const newBalance = playerData.balance - penalty;
-              await update(playerRef, { balance: newBalance });
-              localPlayer.balance = newBalance;
-              alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
-            }
-
-
+            // const interestPercent = playerData.interestPercent       || 0;
+            // const alreadyApplied  = playerData.interestAppliedForRound;
+            // if (interestPercent > 0 && !alreadyApplied) {
+            //   const interest   = Math.floor(playerData.balance * (interestPercent / 100));
+            //   const newBalance = playerData.balance + interest;
+            //   await update(playerRef, {
+            //     balance:                 newBalance,
+            //     interestAppliedForRound: true
+            //   });
+            //   localPlayer.balance = newBalance;
+            //   alert(`💰 ${playerData.name}, you earned $${interest} in interest (${interestPercent}%)!`);
+            // }
+            // if (playerData.cursedLoan) {
+            //   const penalty = Math.floor(playerData.balance * 0.20);
+            //   const newBalance = playerData.balance - penalty;
+            //   await update(playerRef, { balance: newBalance });
+            //   localPlayer.balance = newBalance;
+            //   alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+            // }
 
             playTurnSound();
             if (!soloMode) {
@@ -1030,7 +1086,7 @@ async function handleGuess(guess, state) {
           roundBetBonus:       roundBonus + 1,
           bonusPlusOneActive:  false   // clear the flag
         });
-        console.log(`Applied +1‑bet card upgrade on cash-out`);
+        console.log(`Applied +1-bet card upgrade on cash-out`);
       }
 
       // Stage 1 Fright penalty?
@@ -1500,7 +1556,7 @@ async function endTurn(message, payout) {
   });
 
   // ── SOLO MODE: apply interest & Cursed Loan AFTER each bet ends ──
-  if (soloMode) {
+  // if (soloMode) {
     const psnap2 = await get(playerRef);
     const pdata2 = psnap2.val() || {};
     // 1) Interest
@@ -1509,7 +1565,9 @@ async function endTurn(message, payout) {
       const bal1     = pdata2.balance + interest;
       await update(playerRef, { balance: bal1 });
       localPlayer.balance = bal1;
-      alert(`💰 You earned $${interest} interest (${pdata2.interestPercent}%)!`);
+      if (settings.interestAlerts) {
+        alert(`💰 You earned $${interest} interest (${pdata2.interestPercent}%)!`);
+      }
     }
     // 2) Cursed Loan penalty
     if (pdata2.cursedLoan) {
@@ -1517,9 +1575,11 @@ async function endTurn(message, payout) {
       const bal2    = localPlayer.balance - penalty;
       await update(playerRef, { balance: bal2 });
       localPlayer.balance = bal2;
-      alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+      if (settings.interestAlerts) {
+        alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+      }
     }
-  }
+  // }
 
   // 👥 Refresh player UI
   const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
@@ -2986,7 +3046,7 @@ async function checkRoundCompletion() {
     const remainingBets = effectiveMax - (solo.betsMade || 0);
 
     // ■■■ SAFE‑MARGIN AUTO‑WIN ■■■
-    // If even losing $1 on all remaining bets leaves them above threshold, auto‑win early
+    // auto‑win early
     if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
@@ -3001,7 +3061,7 @@ async function checkRoundCompletion() {
         stage1FrightTriggers: 0
       });
 
-      const nextThresh = Math.floor(currentThresh * 1.125);
+      const nextThresh = Math.floor(currentThresh * 1.2);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
@@ -3073,7 +3133,7 @@ async function checkRoundCompletion() {
         stage1FrightTriggers: 0
       });
 
-      const nextThresh = Math.floor(currentThresh * 1.125);
+      const nextThresh = Math.floor(currentThresh * 1.2);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
