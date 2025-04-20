@@ -2982,7 +2982,7 @@ async function checkRoundCompletion() {
 
     // ■■■ SAFE‑MARGIN AUTO‑WIN ■■■
     // If even losing $1 on all remaining bets leaves them above threshold, auto‑win early
-    if (remainingBets > 0 && solo.balance > currentThresh + remainingBets) {
+    if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
       const startMult  = pdata.startBalanceMultiplier || 1;
@@ -3054,7 +3054,7 @@ async function checkRoundCompletion() {
     }
 
     // End‑of‑round: did they meet threshold?
-    if (solo.balance >= currentThresh) {
+    if (solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
       const startMult  = pdata.startBalanceMultiplier || 1;
