@@ -612,7 +612,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const playerData = playerSnap.val();
 
             if (playerData.showShop && (playerData.purchaseTokens || 0) > 0) {
-              showShopOptions(playerData.isRoundWinner, playerData);
+              showShopOptions(playerData.isRoundWinner);
               await update(playerRef, { showShop: false });
             }
           }
@@ -1563,7 +1563,7 @@ async function updateGameDOM(state) {
   const threshEl = document.getElementById('targetThreshold');
   if (soloMode && (state.threshold)) {
     // always overwrite whatever's in the box
-    threshEl.textContent = `Target: $${state.threshold}`;
+    threshEl.textContent = `Target to beat: $${state.threshold}`;
   } else {
     // optionally clear it if you ever leave solo mode
     threshEl.textContent = '';
@@ -1861,10 +1861,13 @@ function buildPlayerDeck(playerData) {
 }
 
 
-async function showShopOptions(isWinner, playerData) {
-  // 1) Reveal the shop UI and update tokens
-  const shop = document.getElementById('shopSection');
-  if (!shop) return;
+async function showShopOptions(isWinner) {
+  // 1) Fetch the latest player data (so tokens are always up‑to‑date)
+  const snap        = await get(playerRef);
+  const playerData  = snap.val() || {};
+
+  // 2) Reveal the shop UI and display fresh token count
+  const shop        = document.getElementById('shopSection');
   shop.classList.remove('hidden');
   const tokenDisplay = document.getElementById('playerTokens');
   tokenDisplay.textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
@@ -1909,7 +1912,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
     // 5) Re‑call showShopOptions with the newly updated playerData
     const psnap2 = await get(playerRef);
     const pd2    = psnap2.val() || {};
-    showShopOptions(pd2.isRoundWinner, pd2);
+    showShopOptions(pd2.isRoundWinner);
   };
   shop.insertBefore(reshuffleBtn, tokenDisplay.nextSibling);
 }
@@ -2636,6 +2639,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
       // update the on‑screen tokens count
       document.getElementById('playerTokens')
               .textContent = `Tokens: ${Math.max(0, playerData.purchaseTokens - cost)}`;
+
     };
 
     box.appendChild(btn);
@@ -2779,6 +2783,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
       btn.textContent = oldIdx === -1 ? 'Upgraded' : 'Replaced';
       document.getElementById('playerTokens')
               .textContent = `Tokens: ${tokens - 1}`;
+
     };
 
     box.appendChild(btn);
