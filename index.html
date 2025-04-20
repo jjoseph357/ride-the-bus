@@ -315,8 +315,8 @@
 
     // --- SETTINGS STATE ---
     const settings = {
-      interestAlerts: true,
-      loanAlerts: true
+      interestAlerts: false,
+      loanAlerts: false
     };
     // load any saved settings
     try {
@@ -1933,11 +1933,15 @@ async function showShopOptions(isWinner) {
   tokenDisplay.textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
 
 // ▶️ Reshuffle button (1 token)
-if (!document.getElementById('reshuffleShopBtn')) {
-  const reshuffleBtn = document.createElement('button');
+let reshuffleBtn = document.getElementById('reshuffleShopBtn');
+if (!reshuffleBtn) {
+  reshuffleBtn = document.createElement('button');
   reshuffleBtn.id = 'reshuffleShopBtn';
   reshuffleBtn.textContent = '🔄 Reshuffle Shop (1 token)';
   reshuffleBtn.style.margin = '0.5rem 0';
+  shop.insertBefore(reshuffleBtn, tokenDisplay.nextSibling);
+}
+
   reshuffleBtn.onclick = async () => {
     // 1) Fetch fresh player data & token count
     const psnap   = await get(playerRef);
@@ -1975,7 +1979,7 @@ if (!document.getElementById('reshuffleShopBtn')) {
     showShopOptions(pd2.isRoundWinner);
   };
   shop.insertBefore(reshuffleBtn, tokenDisplay.nextSibling);
-}
+
 
 
 
