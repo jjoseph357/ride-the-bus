@@ -357,6 +357,27 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (startTurnBtn) startTurnBtn.addEventListener("click", async () => {
     await update(playerRef, { interestAppliedForRound: false });
+    
+    // ─── apply bonus interest immediately (works in solo mode too)
+    const psnap = await get(playerRef);
+    const pdata = psnap.val() || {};
+    const interestPercent = pdata.interestPercent || 0;
+    if (interestPercent > 0) {
+      const interest = Math.floor(pdata.balance * (interestPercent / 100));
+      const newBalance = pdata.balance + interest;
+      await update(playerRef, { balance: newBalance });
+      localPlayer.balance = newBalance;
+      alert(`💰 ${pdata.name}, you earned $${interest} in interest (${interestPercent}%)!`);
+    }
+
+    // ─── apply Cursed Loan penalty immediately in solo mode ───
+    if (pdata.cursedLoan) {
+      const penalty = Math.floor(pdata.balance * 0.20);
+      const postPenalty = pdata.balance - penalty;
+      await update(playerRef, { balance: postPenalty });
+      localPlayer.balance = postPenalty;
+      alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+    }
 
     const stateSnapPre = await get(stateRef);
     const statePre = stateSnapPre.val();
@@ -2976,7 +2997,7 @@ async function checkRoundCompletion() {
         stage1FrightTriggers: 0
       });
 
-      const nextThresh = Math.floor(currentThresh * 1.15);
+      const nextThresh = Math.floor(currentThresh * 1.125);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
@@ -2989,6 +3010,11 @@ async function checkRoundCompletion() {
 
       await reshuffleDeck();
       await grantTokenAndShowShop([[playerId, solo]]);
+
+      // force a second stateRef change so onValue() sees showShop
+      const s2 = (await get(stateRef)).val() || {};
+      await update(stateRef, { status: s2.status + ' ' });
+
       return;
     }
 
@@ -3012,7 +3038,7 @@ async function checkRoundCompletion() {
         stage1FrightTriggers: 0
       });
 
-      const nextThresh = Math.floor(currentThresh * 1.15);
+      const nextThresh = Math.floor(currentThresh * 1.125);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
@@ -3025,6 +3051,11 @@ async function checkRoundCompletion() {
 
       await reshuffleDeck();
       await grantTokenAndShowShop([[playerId, solo]]);
+
+      // again bump the status so our stateRef listener opens the shop
+      const s3 = (await get(stateRef)).val() || {};
+      await update(stateRef, { status: s3.status + ' ' });
+
     } else {
       showGameOverScreen();
     }
