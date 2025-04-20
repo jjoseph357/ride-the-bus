@@ -2849,6 +2849,7 @@ async function resetAllPlayers(players) {
       isRoundWinner: false,
       roundBetBonus: 0,
       stage1FrightTriggers: 0,
+      stage1FrightArmed:    false,
     });
   }
 
@@ -2940,6 +2941,7 @@ async function checkRoundCompletion() {
   const currentStateSnap = await get(stateRef);
   const currentState = currentStateSnap.val();
   const currentMaxBets = currentState?.maxBetsPerPlayer || 10;
+  const currentThresh   = Math.floor(currentState.threshold || 100);
 
   // If solo and eliminated, show stats instead of looping rounds
   if (isSoloMode) {
@@ -2951,55 +2953,84 @@ async function checkRoundCompletion() {
   }
   // SOLO MODE
   if (isSoloMode) {
-    const solo = Object.values(players)[0];
-    const bonus = solo.betModifierBonus || 0;
-    const effectiveMax = maxBetsPerPlayer + bonus;
+    const solo          = Object.values(players)[0];
+    const bonus         = solo.betModifierBonus    || 0;
+    const roundBonus    = solo.roundBetBonus       || 0;
+    const permBonus     = solo.betModifierBonus    || 0;
+    const effectiveMax  = maxBetsPerPlayer + permBonus + roundBonus;
+    const remainingBets = effectiveMax - (solo.betsMade || 0);
 
-    // still in the round?
-    if (solo.betsMade < effectiveMax) return;
-
-    const currentThresh = Math.floor(currentState.threshold || 100);
-
-    if (solo.balance >= currentThresh) {
-
-      // pull in the latest player data so we see their startBalanceMultiplier
-      const psnap     = await get(playerRef);
-      const pdata     = psnap.val() || {};
-
-      // compute their true starting balance (honoring any boost)
-      const startMult = pdata.startBalanceMultiplier || 1;
+    // ■■■ SAFE‑MARGIN AUTO‑WIN ■■■
+    // If even losing $1 on all remaining bets leaves them above threshold, auto‑win early
+    if (remainingBets > 0 && solo.balance > currentThresh + remainingBets) {
+      const psnap      = await get(playerRef);
+      const pdata      = psnap.val() || {};
+      const startMult  = pdata.startBalanceMultiplier || 1;
       const newBalance = Math.floor(100 * startMult);
 
-      // 🎉 they beat it: win & reset for next round
       await update(playerRef, {
-        roundsWon:         (solo.roundsWon||0) + 1,
-        balance:           newBalance,    // reset to starting money
-        betsMade:          0,      // reset bet count
-        roundBetBonus:     0,      // clear any per‑round bonus
-        stage1FrightTriggers: 0    // reset Stage 1 Fright count
+        roundsWon:           (pdata.roundsWon || 0) + 1,
+        balance:             newBalance,
+        betsMade:            0,
+        roundBetBonus:       0,
+        stage1FrightTriggers: 0
       });
-      // bump threshold
+
       const nextThresh = Math.floor(currentThresh * 1.15);
       await set(stateRef, {
-        gameStarted:    true,
-        currentPlayer:  playerId,
-        currentStage:   0,
-        drawnCards:     [],
-        threshold:      nextThresh,
-        status:         `Next round! Beat $${nextThresh}`,
+        gameStarted:      true,
+        currentPlayer:    playerId,
+        currentStage:     0,
+        drawnCards:       [],
+        threshold:        nextThresh,
+        status:           `Next round! Beat $${nextThresh}`,
         maxBetsPerPlayer
       });
 
-      // refresh deck & shop
+      await reshuffleDeck();
+      await grantTokenAndShowShop([[playerId, solo]]);
+      return;
+    }
+
+    // Still playing this round?
+    if (solo.betsMade < effectiveMax) {
+      return;
+    }
+
+    // End‑of‑round: did they meet threshold?
+    if (solo.balance >= currentThresh) {
+      const psnap      = await get(playerRef);
+      const pdata      = psnap.val() || {};
+      const startMult  = pdata.startBalanceMultiplier || 1;
+      const newBalance = Math.floor(100 * startMult);
+
+      await update(playerRef, {
+        roundsWon:           (pdata.roundsWon || 0) + 1,
+        balance:             newBalance,
+        betsMade:            0,
+        roundBetBonus:       0,
+        stage1FrightTriggers: 0
+      });
+
+      const nextThresh = Math.floor(currentThresh * 1.15);
+      await set(stateRef, {
+        gameStarted:      true,
+        currentPlayer:    playerId,
+        currentStage:     0,
+        drawnCards:       [],
+        threshold:        nextThresh,
+        status:           `Next round! Beat $${nextThresh}`,
+        maxBetsPerPlayer
+      });
+
       await reshuffleDeck();
       await grantTokenAndShowShop([[playerId, solo]]);
     } else {
-      // ☠️ failed to meet threshold → game over
       showGameOverScreen();
     }
-
     return;
   }
+
 
   // DEFAULT WIN
   if (isDefaultWin) {
