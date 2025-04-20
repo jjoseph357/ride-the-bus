@@ -356,29 +356,6 @@ window.addEventListener("DOMContentLoaded", () => {
   if (startGameBtn) startGameBtn.addEventListener("click", startGame);
 
   if (startTurnBtn) startTurnBtn.addEventListener("click", async () => {
-    await update(playerRef, { interestAppliedForRound: false });
-    
-    // ─── apply bonus interest immediately (works in solo mode too)
-    const psnap = await get(playerRef);
-    const pdata = psnap.val() || {};
-    const interestPercent = pdata.interestPercent || 0;
-    if (interestPercent > 0) {
-      const interest = Math.floor(pdata.balance * (interestPercent / 100));
-      const newBalance = pdata.balance + interest;
-      await update(playerRef, { balance: newBalance });
-      localPlayer.balance = newBalance;
-      alert(`💰 ${pdata.name}, you earned $${interest} in interest (${interestPercent}%)!`);
-    }
-
-    // ─── apply Cursed Loan penalty immediately in solo mode ───
-    if (pdata.cursedLoan) {
-      const penalty = Math.floor(pdata.balance * 0.20);
-      const postPenalty = pdata.balance - penalty;
-      await update(playerRef, { balance: postPenalty });
-      localPlayer.balance = postPenalty;
-      alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
-    }
-
     const stateSnapPre = await get(stateRef);
     const statePre = stateSnapPre.val();
     if (statePre.currentStage !== 0) {
@@ -1521,6 +1498,28 @@ async function endTurn(message, payout) {
     status: `${localPlayer.name}: ${message}`,
     currentStage: 0
   });
+
+  // ── SOLO MODE: apply interest & Cursed Loan AFTER each bet ends ──
+  if (soloMode) {
+    const psnap2 = await get(playerRef);
+    const pdata2 = psnap2.val() || {};
+    // 1) Interest
+    if (pdata2.interestPercent > 0) {
+      const interest = Math.floor(pdata2.balance * (pdata2.interestPercent / 100));
+      const bal1     = pdata2.balance + interest;
+      await update(playerRef, { balance: bal1 });
+      localPlayer.balance = bal1;
+      alert(`💰 You earned $${interest} interest (${pdata2.interestPercent}%)!`);
+    }
+    // 2) Cursed Loan penalty
+    if (pdata2.cursedLoan) {
+      const penalty = Math.floor(localPlayer.balance * 0.20);
+      const bal2    = localPlayer.balance - penalty;
+      await update(playerRef, { balance: bal2 });
+      localPlayer.balance = bal2;
+      alert(`💸 You lost $${penalty} due to the Cursed Loan (-20%).`);
+    }
+  }
 
   // 👥 Refresh player UI
   const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
@@ -3007,9 +3006,40 @@ async function checkRoundCompletion() {
         status:           `Next round! Beat $${nextThresh}`,
         maxBetsPerPlayer
       });
+      await update(playerRef, { interestAppliedForRound: false });
 
       await reshuffleDeck();
       await grantTokenAndShowShop([[playerId, solo]]);
+
+      // apply bonus interest (once per round)
+      {
+        const snap2  = await get(playerRef);
+        const pd2    = snap2.val() || {};
+        if (pd2.interestPercent > 0 && !pd2.interestAppliedForRound) {
+          const amt      = Math.floor(pd2.balance * (pd2.interestPercent/100));
+          const balAfter = pd2.balance + amt;
+          await update(playerRef, {
+            balance: balAfter,
+            interestAppliedForRound: true
+          });
+          localPlayer.balance = balAfter;
+          alert(`💰 You earned $${amt} interest (${pd2.interestPercent}%)!`);
+        }
+      }
+
+      // apply Cursed Loan penalty
+      {
+        const snap3  = await get(playerRef);
+        const pd3    = snap3.val() || {};
+        if (pd3.cursedLoan) {
+          const pen      = Math.floor(pd3.balance * 0.20);
+          const balAfter = pd3.balance - pen;
+          await update(playerRef, { balance: balAfter });
+          localPlayer.balance = balAfter;
+          alert(`💸 You lost $${pen} due to Cursed Loan (-20%).`);
+        }
+      }
+
 
       // force a second stateRef change so onValue() sees showShop
       const s2 = (await get(stateRef)).val() || {};
@@ -3051,6 +3081,35 @@ async function checkRoundCompletion() {
 
       await reshuffleDeck();
       await grantTokenAndShowShop([[playerId, solo]]);
+
+      // apply bonus interest (once per round)
+      {
+        const snap2  = await get(playerRef);
+        const pd2    = snap2.val() || {};
+        if (pd2.interestPercent > 0 && !pd2.interestAppliedForRound) {
+          const amt      = Math.floor(pd2.balance * (pd2.interestPercent/100));
+          const balAfter = pd2.balance + amt;
+          await update(playerRef, {
+            balance: balAfter,
+            interestAppliedForRound: true
+          });
+          localPlayer.balance = balAfter;
+          alert(`💰 You earned $${amt} interest (${pd2.interestPercent}%)!`);
+        }
+      }
+
+      // apply Cursed Loan penalty
+      {
+        const snap3  = await get(playerRef);
+        const pd3    = snap3.val() || {};
+        if (pd3.cursedLoan) {
+          const pen      = Math.floor(pd3.balance * 0.20);
+          const balAfter = pd3.balance - pen;
+          await update(playerRef, { balance: balAfter });
+          localPlayer.balance = balAfter;
+          alert(`💸 You lost $${pen} due to Cursed Loan (-20%).`);
+        }
+      }
 
       // again bump the status so our stateRef listener opens the shop
       const s3 = (await get(stateRef)).val() || {};
