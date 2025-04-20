@@ -2003,16 +2003,7 @@ if (!reshuffleBtn) {
         const currentBonus = data.betModifierBonus || 0;
         const currentTokens = data.purchaseTokens || 0;
         if (currentTokens < 2) return alert("You need 2 tokens to buy this.");
-          await update(playerRef, {
-            betModifierBonus: currentBonus + 2,
-            purchaseTokens:   currentTokens - 2
-          });
 
-        // Apply the bonus
-        await update(playerRef, {
-          betModifierBonus: currentBonus + 2,
-          purchaseTokens: currentTokens - 1
-        });
         alert("You will now be able to make 2 more bets this round!");
 
         // Update history
@@ -2020,6 +2011,8 @@ if (!reshuffleBtn) {
         history.push("+2 bets per round");
 
         await update(playerRef, {
+          betModifierBonus: currentBonus + 2,
+          purchaseTokens:   currentTokens - 2,
           modifierHistory: history
         });
       }
@@ -2031,28 +2024,25 @@ if (!reshuffleBtn) {
         const snap = await get(playerRef);
         const data = snap.val();
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
         const oldMultipliers = data.multipliers || { 1: 2, 2: 3, 3: 4, 4: 20, 5: 500 };
         const newMultipliers = {};
         for (const [stage, mult] of Object.entries(oldMultipliers)) {
           newMultipliers[stage] = Math.round(mult * 1.25);
         }
         const currentBonus = data.betModifierBonus || 0;
-        await update(playerRef, {
-          multipliers: newMultipliers,
-          betModifierBonus: currentBonus - 2,
-          purchaseTokens: tokens - 1
-        });
+        
         alert("Multipliers increased by 1.25x! You lose 2 bets.");
 
         const history = data.modifierHistory || [];
         history.push("Increase all win multipliers by 1.25x, -2 bets");
 
         await update(playerRef, {
-          purchaseTokens: tokens - 1,
+          multipliers: newMultipliers,
+          betModifierBonus: currentBonus - 2,
+          purchaseTokens: tokens - 2,
           modifierHistory: history
         });
-
       }
     },
     "Hail Mary": {
@@ -2619,17 +2609,13 @@ if (!reshuffleBtn) {
           const shields = data.shields || {};
           shields[stage] = 25; // percent
 
-          await update(playerRef, {
-            shields,
-            purchaseTokens: tokens - 2
-          });
-
           alert(`You are now protected on Stage ${stage}. You will recover 25% of your bet if you fail.`);
 
           const history = data.modifierHistory || [];
           history.push(`Retain 25% of your bet if you fail on Stage ${stage}`);
 
           await update(playerRef, {
+            shields,
             purchaseTokens: tokens - 2,
             modifierHistory: history
           });
@@ -2664,7 +2650,7 @@ if (!reshuffleBtn) {
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
-      "Hail Mary","Two-edged","Bonus Bets"
+      "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier"
     ].includes(name)) {
       cost = 2;
     }
