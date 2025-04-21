@@ -7,7 +7,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ride the Bus1</title>
+  <title>Ride the Bus</title>
   <style>
     body {
       margin: 0;
@@ -1096,7 +1096,7 @@ async function handleGuess(guess, state) {
 
       // 💀 Cursed Loan logic (apply AFTER payout)
       if (pdata.cursedLoan) {
-        const stageNum = 2;
+        const stageNum = 1;
         const oldMults = pdata.multipliers || {};
         const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
         const newMults = { ...oldMults, [stageNum]: boosted };
@@ -1921,15 +1921,15 @@ async function showShopOptions(isWinner) {
   const tokenDisplay = document.getElementById('playerTokens');
   tokenDisplay.textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
 
-// ▶️ Reshuffle button (1 token)
-let reshuffleBtn = document.getElementById('reshuffleShopBtn');
-if (!reshuffleBtn) {
-  reshuffleBtn = document.createElement('button');
-  reshuffleBtn.id = 'reshuffleShopBtn';
-  reshuffleBtn.textContent = '🔄 Reshuffle Shop (1 token)';
-  reshuffleBtn.style.margin = '0.5rem 0';
-  shop.insertBefore(reshuffleBtn, tokenDisplay.nextSibling);
-}
+  // ▶️ Reshuffle button (1 token)
+  let reshuffleBtn = document.getElementById('reshuffleShopBtn');
+  if (!reshuffleBtn) {
+    reshuffleBtn = document.createElement('button');
+    reshuffleBtn.id = 'reshuffleShopBtn';
+    reshuffleBtn.textContent = '🔄 Reshuffle Shop (1 token)';
+    reshuffleBtn.style.margin = '0.5rem 0';
+    shop.insertBefore(reshuffleBtn, tokenDisplay.nextSibling);
+  }
 
   reshuffleBtn.onclick = async () => {
     // 1) Fetch fresh player data & token count
@@ -1953,11 +1953,12 @@ if (!reshuffleBtn) {
       "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright"
     ];
     // shuffle and take the same count as before
+    // 3) Shuffle the current shared bet‑modifiers (preserving count)
     const stateSnap = await get(stateRef);
-    const oldShared = (stateSnap.val() || {}).sharedBetModifiers || [];
-    const newShared = allKeys
-      .sort(() => Math.random() - 0.5)
-      .slice(0, oldShared.length);
+    const oldShared = stateSnap.val()?.sharedBetModifiers || [];
+    // Make a copy and shuffle it in place
+    const newShared = [...oldShared].sort(() => Math.random() - 0.5);
+
 
     // 4) Persist the new shared list so showShopOptions re‑reads it
     await update(stateRef, { sharedBetModifiers: newShared });
@@ -2457,7 +2458,7 @@ if (!reshuffleBtn) {
     },
     "Cursed Loan": {
       name: "Cursed Loan",
-      desc: "Start of turn: lose 20% of your balance. Cash out: +1 multiplier for that stage (permanent)",
+      desc: "Start of turn: lose 20% of your balance. Cash out: +1 multiplier for next stage (permanent)",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val() || {};
