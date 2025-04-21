@@ -2380,30 +2380,38 @@ async function showShopOptions(isWinner) {
     },
     "Quick Start": {
       name: "Quick Start",
-      desc: "Next round's starting balance +50",
+      desc: "Next round's starting balance +50 (cost ↑ each time)",
       apply: async () => {
-        const snap   = await get(playerRef);
-        const data   = snap.val() || {};
-        const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("🛑 You need 2 tokens to buy Quick Start.");
+      const snap   = await get(playerRef);
+      const data   = snap.val() || {};
+      const count  = data.quickStartCount || 0;
+      const cost   = 2 + count;                     // base 2, +1 per prior purchase
+      const tokens = data.purchaseTokens || 0;
+      if (tokens < cost) {
+          return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
+        }
 
-        // new: push an op onto startBalanceOps
-        const ops = data.startBalanceOps || [];
-        ops.push({ type: 'boost', value: 50 });
+      // record the boost op
+      const ops = data.startBalanceOps || [];
+      ops.push({ type: 'boost', value: 50 });
 
-        const history = data.modifierHistory || [];
-        history.push(`Quick Start: +50 starting balance`);
+      // increment purchase count
+      const newCount = count + 1;
 
+      const history = data.modifierHistory || [];
+      history.push(`Quick Start #${newCount}: +50 starting balance`);
 
-            
+          
       await update(playerRef, {
-        startBalanceOps:  ops,
-        purchaseTokens:   tokens - 2,
-        modifierHistory:  history
-      });
+          startBalanceOps:  ops,
+          quickStartCount:  newCount,
+          purchaseTokens:   tokens - cost,
+          modifierHistory:  history
+        });
 
-      alert(`🚀 Quick Start purchased! Next round you start with +50 bonus.`);
-      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        alert(`🚀 Quick Start purchased (#${newCount})! Next round you start with +50 bonus.`);
+         document.getElementById('playerTokens')
+                 .textContent = `Tokens: ${tokens - cost}`;
 
       }
     },
@@ -2799,6 +2807,10 @@ async function showShopOptions(isWinner) {
     // calculate cost:
     let cost = 1; 
     // if (name === "Remove Diamonds & Clubs") cost = 4;
+    if (name === "Quick Start") {
+       const count = playerData.quickStartCount || 0;
+       cost = count + 2;
+     }
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
@@ -3217,8 +3229,12 @@ async function checkRoundCompletion() {
     if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
-      const startMult  = pdata.startBalanceMultiplier || 1;
-      const newBalance = Math.floor(100 * startMult);
+      let amt = 100;
+       (pdata.startBalanceOps || []).forEach(op => {
+         if (op.type === 'boost') amt += op.value;
+         else if (op.type === 'mult')  amt *= op.value;
+       });
+       const newBalance = Math.floor(amt);
 
       await update(playerRef, {
         roundsWon:           (pdata.roundsWon || 0) + 1,
