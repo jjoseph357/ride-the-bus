@@ -1983,7 +1983,7 @@ async function showShopOptions(isWinner) {
       "Hail Mary","Blue Suits & Boost","Snow-baller", "Summon Kings",
       "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
       "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-      "Cursed Loan","Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds",
+      "Cursed Loan","Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
       "Power Rush"
     ];
     // shuffle and take the same count as before
@@ -2172,19 +2172,18 @@ async function showShopOptions(isWinner) {
     //     document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
     //   }
     // },
-    // ─── New: Remove 4 random clubs ─────────────────────────
-    "Remove 4 Clubs": {
-      name: "Remove 4 Clubs",
-      desc: "Permanently remove 4 random ♣ from your deck",
+    "Remove 2 Clubs": {
+      name: "Remove 2 Clubs",
+      desc: "Permanently remove 2 random ♣ from your deck",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
         if (tokens < 3) return alert("You need 3 tokens to buy this.");   
-        // Build your deck, filter for clubs, pick 4 at random
+        // Build your deck, filter for clubs, pick 2 at random
         let clubCards = buildPlayerDeck(data).filter(c => c.suit === '♣');
         const toRemove = [];
-        for (let i = 0; i < 4 && clubCards.length; i++) {
+        for (let i = 0; i < 2 && clubCards.length; i++) {
           const idx = Math.floor(Math.random() * clubCards.length);
           toRemove.push(clubCards.splice(idx, 1)[0].text);
         }   
@@ -2192,19 +2191,19 @@ async function showShopOptions(isWinner) {
         const upgrades = data.cardUpgrades || [];
         toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
         const history = data.modifierHistory || [];
-        history.push(`Removed 4 clubs: ${toRemove.join(', ')}`);    
+        history.push(`Removed 2 clubs: ${toRemove.join(', ')}`);    
         await update(playerRef, {
           cardUpgrades:     upgrades,
           purchaseTokens:   tokens - 3,
           modifierHistory:  history
         });
-        alert(`🗑️ Removed 4 clubs: ${toRemove.join(', ')}`);
+        alert(`🗑️ Removed 2 clubs: ${toRemove.join(', ')}`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },    
-    "Remove 4 Spades": {
-      name: "Remove 4 Spades",
-      desc: "Permanently remove 4 random ♠ from your deck",
+    "Remove 2 Spades": {
+      name: "Remove 2 Spades",
+      desc: "Permanently remove 2 random ♠ from your deck",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2212,26 +2211,26 @@ async function showShopOptions(isWinner) {
         if (tokens < 3) return alert("You need 3 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♠');
         const toRemove = [];
-        for (let i = 0; i < 4 && pool.length; i++) {
+        for (let i = 0; i < 2 && pool.length; i++) {
           const idx = Math.floor(Math.random() * pool.length);
           toRemove.push(pool.splice(idx, 1)[0].text);
         }   
         const upgrades = data.cardUpgrades || [];
         toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
         const history = data.modifierHistory || [];
-        history.push(`Removed 4 spades: ${toRemove.join(', ')}`);   
+        history.push(`Removed 2 spades: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
           purchaseTokens:   tokens - 3,
           modifierHistory:  history
         });
-        alert(`🗑️ Removed 4 spades: ${toRemove.join(', ')}`);
+        alert(`🗑️ Removed 2 spades: ${toRemove.join(', ')}`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },    
-    "Remove 4 Hearts": {
-      name: "Remove 4 Hearts",
-      desc: "Permanently remove 4 random ♥ from your deck",
+    "Remove 2 Hearts": {
+      name: "Remove 2 Hearts",
+      desc: "Permanently remove 2 random ♥ from your deck",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2239,26 +2238,26 @@ async function showShopOptions(isWinner) {
         if (tokens < 3) return alert("You need 3 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♥');
         const toRemove = [];
-        for (let i = 0; i < 4 && pool.length; i++) {
+        for (let i = 0; i < 2 && pool.length; i++) {
           const idx = Math.floor(Math.random() * pool.length);
           toRemove.push(pool.splice(idx, 1)[0].text);
         }   
         const upgrades = data.cardUpgrades || [];
         toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
         const history = data.modifierHistory || [];
-        history.push(`Removed 4 hearts: ${toRemove.join(', ')}`);   
+        history.push(`Removed 2 hearts: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
           purchaseTokens:   tokens - 3,
           modifierHistory:  history
         });
-        alert(`🗑️ Removed 4 hearts: ${toRemove.join(', ')}`);
+        alert(`🗑️ Removed 2 hearts: ${toRemove.join(', ')}`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },    
-    "Remove 4 Diamonds": {
-      name: "Remove 4 Diamonds",
-      desc: "Permanently remove 4 random ♦ from your deck",
+    "Remove 2 Diamonds": {
+      name: "Remove 2 Diamonds",
+      desc: "Permanently remove 2 random ♦ from your deck",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2266,20 +2265,20 @@ async function showShopOptions(isWinner) {
         if (tokens < 3) return alert("You need 3 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♦');
         const toRemove = [];
-        for (let i = 0; i < 4 && pool.length; i++) {
+        for (let i = 0; i < 2 && pool.length; i++) {
           const idx = Math.floor(Math.random() * pool.length);
           toRemove.push(pool.splice(idx, 1)[0].text);
         }   
         const upgrades = data.cardUpgrades || [];
         toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
         const history = data.modifierHistory || [];
-        history.push(`Removed 4 diamonds: ${toRemove.join(', ')}`);   
+        history.push(`Removed 2 diamonds: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
           purchaseTokens:   tokens - 3,
           modifierHistory:  history
         });
-        alert(`🗑️ Removed 4 diamonds: ${toRemove.join(', ')}`);
+        alert(`🗑️ Removed 2 diamonds: ${toRemove.join(', ')}`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },
@@ -2824,8 +2823,8 @@ async function showShopOptions(isWinner) {
       cost = 2;
     }
     if ([
-      "Stage 1 Fright", "Cursed Loan", "Remove 4 Clubs", "Remove 4 Spades",
-      "Remove 4 Hearts", "Remove 4 Diamonds"
+      "Stage 1 Fright", "Cursed Loan", "Remove 2 Clubs", "Remove 2 Spades",
+      "Remove 2 Hearts", "Remove 2 Diamonds"
     ].includes(name)) {
       cost = 3;
     }
@@ -3155,7 +3154,7 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-  "Cursed Loan", "Summon Kings", "Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds",
+  "Cursed Loan", "Summon Kings", "Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
   "Power Rush"
 ];
 
