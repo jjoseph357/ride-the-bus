@@ -2004,6 +2004,7 @@ if (!reshuffleBtn) {
           purchaseTokens:   currentTokens - 2,
           modifierHistory: history
         });
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Super Multiplier": {
@@ -2032,6 +2033,7 @@ if (!reshuffleBtn) {
           purchaseTokens: tokens - 2,
           modifierHistory: history
         });
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Hail Mary": {
@@ -2180,6 +2182,7 @@ if (!reshuffleBtn) {
         await update(playerRef, { modifierHistory: history });
 
         alert("❄️ Snow-baller unlocked! Your next bet's multiplier will be multiplier + (bet / balance).");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
     "Ace & Two": {
@@ -2571,7 +2574,8 @@ if (!reshuffleBtn) {
             modifierHistory:   [...(data.modifierHistory||[]), `Stage ${stage} Boost +${count}`]
           });
 
-          alert(`Stage ${stage} multiplier increased by +${count} (now ${newMult[stage]}×)!`);
+          alert(`Stage ${stage} multiplier increased by +${count} (now ${newMult[stage]}x)!`);
+          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
         }
       };
       return map;
@@ -2608,6 +2612,7 @@ if (!reshuffleBtn) {
             purchaseTokens: tokens - 2,
             modifierHistory: history
           });
+          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
 
         }
       }];
