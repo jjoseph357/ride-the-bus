@@ -838,49 +838,38 @@ function createCardDisplay(card, effect = null) {
 
 
 async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
-  // 1️⃣ load the shared deck
+  // 1️⃣ Load the shared deck
   const deckSnap   = await get(deckRef);
   const globalDeck = deckSnap.val() || [];
 
-  // 2️⃣ load this player’s modifiers
-  const playerSnap      = await get(playerRef);
-  const data            = playerSnap.val() || {};
+  // 2️⃣ Load this player’s modifiers
+  const playerSnap = await get(playerRef);
+  const data       = playerSnap.val() || {};
   const dupCounts     = data.duplicateCounts || {};
-  const boostCount      = data.aceTwoBoostCount   || 0;
-  const facelessCount   = data.facelessCount      || 0;
-  const remove2to4Count = data.remove2to4Count    || 0;
-  const remove7and8Count = data.remove7and8Count || 0;
+  const boostCount    = data.aceTwoBoostCount   || 0;
+  const facelessCount = data.facelessCount      || 0;
+  const remove2to4    = data.remove2to4Count    || 0;
+  const remove7and8   = data.remove7and8Count   || 0;
 
-  // 3️⃣ build the in‑memory pool
-  const pool = [...globalDeck];
+  // 3️⃣ Build the in‑memory pool
+  let pool = [...globalDeck];
 
-  // filter out remove_card upgrades here too
-const removed = (data.cardUpgrades || [])
-  .filter(u => u.effect === 'remove_card')
-  .map(u => u.text);
-for (const text of removed) {
-  // remove all matching entries
-  let idx;
-  while ((idx = pool.findIndex(c => c.text === text)) !== -1) {
-    pool.splice(idx, 1);
-  }
-}
+  // ─── Remove specific cards by upgrade ───────────────────
+  const removedTexts = (data.cardUpgrades || [])
+    .filter(u => u.effect === 'remove_card')
+    .map(u => u.text);
+  pool = pool.filter(c => !removedTexts.includes(c.text));
 
+  // ─── Duplicate‑card stacking ───────────────────────────
+  Object.entries(dupCounts).forEach(([text, count]) => {
+    const template = pool.find(c => c.text === text);
+    if (!template) return;
+    for (let i = 0; i < count; i++) {
+      pool.push({ ...template, _isDup: true });
+    }
+  });
 
-
-// ─── Duplicate‑card stacking ──────────────────────────────────
-Object.entries(dupCounts).forEach(([text, count]) => {
-  // find one instance in the pool (if it passed filters)
-  const template = pool.find(c => c.text === text);
-  if (!template) return;
-  for (let i = 0; i < count; i++) {
-    pool.push({ ...template, _isDup: true });
-  }
-});
-
-// ───────────────────────────────────────────────────────────────
-
-  // ─── Blue suits ───────────────────────────────
+  // ─── Blue suits ───────────────────────────────────────
   if (data.addBlueSuits) {
     const blueSuits = ['☾','★'];
     const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
@@ -892,7 +881,7 @@ Object.entries(dupCounts).forEach(([text, count]) => {
     }
   }
 
-  // ─── Ace & Two stacking ───────────────────────
+  // ─── Ace & Two boosts ─────────────────────────────────
   if (boostCount > 0) {
     let suits = ['♠','♥','♦','♣'];
     if (data.addBlueSuits)        suits.push('☾','★');
@@ -900,60 +889,48 @@ Object.entries(dupCounts).forEach(([text, count]) => {
 
     for (let i = 0; i < boostCount; i++) {
       for (const suit of suits) {
-        pool.push({ text: 'A' + suit, suit, value: 14, _isBlue: true });
-        pool.push({ text: '2' + suit, suit, value: 2,  _isBlue: true });
+        pool.push({ text: 'A'+suit, suit, value: 14, _isDup: true });
+        pool.push({ text: '2'+suit, suit, value: 2,  _isDup: true });
       }
     }
   }
 
-  // 4️⃣ random‑draw with duplicate/suit/value checks
+  // 4️⃣ Draw a unique card
   let card  = null;
   let tries = pool.length;
+
   while (tries-- && !card) {
     const idx     = Math.floor(Math.random() * pool.length);
     const attempt = pool.splice(idx, 1)[0];
 
-    // 1️⃣ Apply any cauldron remap **before** filtering
+    // ─── 1) Apply Witch’s Cauldron mapping *before* filtering ───
     if (data.witchCauldronMap?.[attempt.text]) {
       const { value: mappedValue, suit: mappedSuit } = data.witchCauldronMap[attempt.text];
-      attempt.value    = mappedValue;
-      attempt.suit     = mappedSuit;
+      attempt.value     = mappedValue;
+      attempt.suit      = mappedSuit;
       attempt._cauldron = true;
     }
 
-    // 2️⃣ Now compute effective value for duplicate filtering
-    const effectiveValue = attempt.value;
+    // ─── 2) Compute filters against the *mapped* value ──────────
+    const dupCard  = drawnCards.some(c => c.text  === attempt.text);
+    const dupValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
+    const removeSuit = data.removeDiamondsClubs && (attempt.suit==='♦' || attempt.suit==='♣');
+    const removeFace = facelessCount > 0 && [11,12,13].includes(attempt.value);
+    const removeLow  = remove2to4 > 0       && [2,3,4].includes(attempt.value);
+    const remove78   = remove7and8 > 0      && [7,8].includes(attempt.value);
 
-    const dupCard   = drawnCards.some(c => c.text  === attempt.text);
-    const dupValue = excludeSameValue
-    && drawnCards.some(c => c.value === effectiveValue);
-    const removeSuit = data.removeDiamondsClubs
-                    && (attempt.suit === '♦' || attempt.suit === '♣');
-    const removeFace = facelessCount > 0
-                    && (attempt.value === 11 || attempt.value === 12 || attempt.value === 13);
-    const removeLow  = remove2to4Count > 0
-                    && (attempt.value === 2  || attempt.value === 3  || attempt.value === 4);
-
-    const remove7or8 = remove7and8Count > 0 && (attempt.value === 7 || attempt.value === 8);
-
-    if (dupCard || dupValue || removeSuit || removeFace || removeLow || remove7or8) {
+    if (dupCard || dupValue || removeSuit || removeFace || removeLow || remove78) {
       continue;
     }
 
+    // ─── 3) This one is good ────────────────────────────────────
     card = attempt;
 
-    if (data.witchCauldronMap && data.witchCauldronMap[attempt.text]) {
-      const { value, suit } = data.witchCauldronMap[attempt.text];
-      attempt.value = value;
-      attempt.suit = suit;
-      attempt._cauldron = true;
+    // ─── 4) If from the shared deck, remove it there (only in multiplayer) ──
+    if (!card._isBlue && !card._isDup && !soloMode) {
+      const newGlobal = globalDeck.filter(c => c.text !== card.text);
+      await set(deckRef, newGlobal);
     }
-  }
-
-  // 5️⃣ if it came from the shared deck, remove it there
-  if (card && !card._isBlue && !card._isDup) {
-    const newGlobal = globalDeck.filter(c => c.text !== card.text);
-    await set(deckRef, newGlobal);
   }
 
   return card;
@@ -1005,7 +982,7 @@ async function handleGuess(guess, state) {
         (guess === 'Black' && isBlack) ||
         (guess === 'Blue'  && isBlue)) {
       state.currentStage = 2;
-      state.status       = 'Correct! Cash out 2× or pick Higher/Lower';
+      state.status       = 'Correct! Cash out 2x or pick Higher/Lower';
       await update(stateRef, state);
       await emitSuccess();
     } else {
@@ -2416,7 +2393,7 @@ if (!reshuffleBtn) {
         if (tokens < 3) return alert("You don't have enough tokens.");
 
         const history = data.modifierHistory || [];
-        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet");
+        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet (max. 3 times)");
 
         await update(playerRef, {
           purchaseTokens: tokens - 3,
@@ -2424,7 +2401,7 @@ if (!reshuffleBtn) {
           stage1Fright: true    // flag that you own it
         });
 
-        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x.");
+        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x (max. 3 times).");
         document.getElementById('playerTokens')
                 .textContent = `Tokens: ${tokens - 3}`;
       }
