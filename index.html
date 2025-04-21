@@ -542,7 +542,8 @@ window.addEventListener("DOMContentLoaded", () => {
           3: 4,
           4: 20,
           5: 500
-        }
+        },
+        startBalanceOps: [], 
       };
 
       await set(playerRef, localPlayer);
@@ -1956,17 +1957,20 @@ async function showShopOptions(isWinner) {
       "Bonus Bets","Super Multiplier","Bonus Interest",
       "Stage 1 Boost","Stage 2 Boost","Stage 3 Boost","Stage 4 Boost",
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield","Stage 4 Shield","Stage 5 Shield",
-      "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller",
-      "Ace & Two","Faceless","Remove 2-4","Starting Balance Boost","Humble Beginnings",
-      "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright"
+      "Hail Mary","Blue Suits & Boost","Snow-baller", "Summon Kings",
+      "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
+      "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
+      "Cursed Loan","Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds"
     ];
     // shuffle and take the same count as before
     // 3) Shuffle the current shared bet‑modifiers (preserving count)
+    // Make a copy and shuffle it in place
     const stateSnap = await get(stateRef);
     const oldShared = stateSnap.val()?.sharedBetModifiers || [];
-    // Make a copy and shuffle it in place
-    const newShared = [...oldShared].sort(() => Math.random() - 0.5);
-
+    // sample brand-new modifiers (same count as before)
+    const newShared = allKeys
+      .sort(() => Math.random() - 0.5)
+      .slice(0, oldShared.length);
 
     // 4) Persist the new shared list so showShopOptions re‑reads it
     await update(stateRef, { sharedBetModifiers: newShared });
@@ -2120,30 +2124,142 @@ async function showShopOptions(isWinner) {
         document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
       }
     },
-    "Remove Diamonds & Clubs": {
-      name: "Remove Diamonds & Clubs",
-      desc: "Skip all ♦ and ♣ when drawing cards",
+    // "Remove Diamonds & Clubs": {
+    //   name: "Remove Diamonds & Clubs",
+    //   desc: "Skip all ♦ and ♣ when drawing cards",
+    //   apply: async () => {
+    //     const snap   = await get(playerRef);
+    //     const data   = snap.val() || {};
+    //     const tokens = data.purchaseTokens || 0;
+    //     if (tokens < 4) return alert("You don't have enough tokens.");
+
+    //     // Mark this player as “removing” those suits
+    //     await update(playerRef, {
+    //       removeDiamondsClubs: true,
+    //       purchaseTokens:      tokens - 4
+    //     });
+
+    //     // Record in history
+    //     const history = data.modifierHistory || [];
+    //     history.push("Remove all diamonds and clubs");
+    //     await update(playerRef, { modifierHistory: history });
+
+    //     alert("All ♦ and ♣ will now be skipped in your draws!");
+    //     document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
+    //   }
+    // },
+    // ─── New: Remove 4 random clubs ─────────────────────────
+    "Remove 4 Clubs": {
+      name: "Remove 4 Clubs",
+      desc: "Permanently remove 4 random ♣ from your deck",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 4) return alert("You don't have enough tokens.");
-
-        // Mark this player as “removing” those suits
-        await update(playerRef, {
-          removeDiamondsClubs: true,
-          purchaseTokens:      tokens - 4
-        });
-
-        // Record in history
+        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        // Build your deck, filter for clubs, pick 4 at random
+        let clubCards = buildPlayerDeck(data).filter(c => c.suit === '♣');
+        const toRemove = [];
+        for (let i = 0; i < 4 && clubCards.length; i++) {
+          const idx = Math.floor(Math.random() * clubCards.length);
+          toRemove.push(clubCards.splice(idx, 1)[0].text);
+        }   
+        // Persist removal: add each to cardUpgrades with effect remove_card
+        const upgrades = data.cardUpgrades || [];
+        toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
         const history = data.modifierHistory || [];
-        history.push("Remove all diamonds and clubs");
-        await update(playerRef, { modifierHistory: history });
-
-        alert("All ♦ and ♣ will now be skipped in your draws!");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
+        history.push(`Removed 4 clubs: ${toRemove.join(', ')}`);    
+        await update(playerRef, {
+          cardUpgrades:     upgrades,
+          purchaseTokens:   tokens - 3,
+          modifierHistory:  history
+        });
+        alert(`🗑️ Removed 4 clubs: ${toRemove.join(', ')}`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+      }
+    },    
+    "Remove 4 Spades": {
+      name: "Remove 4 Spades",
+      desc: "Permanently remove 4 random ♠ from your deck",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        let pool = buildPlayerDeck(data).filter(c => c.suit === '♠');
+        const toRemove = [];
+        for (let i = 0; i < 4 && pool.length; i++) {
+          const idx = Math.floor(Math.random() * pool.length);
+          toRemove.push(pool.splice(idx, 1)[0].text);
+        }   
+        const upgrades = data.cardUpgrades || [];
+        toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
+        const history = data.modifierHistory || [];
+        history.push(`Removed 4 spades: ${toRemove.join(', ')}`);   
+        await update(playerRef, {
+          cardUpgrades:     upgrades,
+          purchaseTokens:   tokens - 3,
+          modifierHistory:  history
+        });
+        alert(`🗑️ Removed 4 spades: ${toRemove.join(', ')}`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+      }
+    },    
+    "Remove 4 Hearts": {
+      name: "Remove 4 Hearts",
+      desc: "Permanently remove 4 random ♥ from your deck",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        let pool = buildPlayerDeck(data).filter(c => c.suit === '♥');
+        const toRemove = [];
+        for (let i = 0; i < 4 && pool.length; i++) {
+          const idx = Math.floor(Math.random() * pool.length);
+          toRemove.push(pool.splice(idx, 1)[0].text);
+        }   
+        const upgrades = data.cardUpgrades || [];
+        toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
+        const history = data.modifierHistory || [];
+        history.push(`Removed 4 hearts: ${toRemove.join(', ')}`);   
+        await update(playerRef, {
+          cardUpgrades:     upgrades,
+          purchaseTokens:   tokens - 3,
+          modifierHistory:  history
+        });
+        alert(`🗑️ Removed 4 hearts: ${toRemove.join(', ')}`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+      }
+    },    
+    "Remove 4 Diamonds": {
+      name: "Remove 4 Diamonds",
+      desc: "Permanently remove 4 random ♦ from your deck",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        let pool = buildPlayerDeck(data).filter(c => c.suit === '♦');
+        const toRemove = [];
+        for (let i = 0; i < 4 && pool.length; i++) {
+          const idx = Math.floor(Math.random() * pool.length);
+          toRemove.push(pool.splice(idx, 1)[0].text);
+        }   
+        const upgrades = data.cardUpgrades || [];
+        toRemove.forEach(text => upgrades.push({ text, effect: 'remove_card' }));   
+        const history = data.modifierHistory || [];
+        history.push(`Removed 4 diamonds: ${toRemove.join(', ')}`);   
+        await update(playerRef, {
+          cardUpgrades:     upgrades,
+          purchaseTokens:   tokens - 3,
+          modifierHistory:  history
+        });
+        alert(`🗑️ Removed 4 diamonds: ${toRemove.join(', ')}`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },
+
 
     "Remove 2-4": {
       name: "Remove 2-4",
@@ -2238,77 +2354,63 @@ async function showShopOptions(isWinner) {
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
-    "Starting Balance Boost": {
-      name: "Starting Balance Boost",
-      desc: "Multiply your next round's starting balance by 1.5x",
+    "Quick Start": {
+      name: "Quick Start",
+      desc: "Next round's starting balance +50",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("🛑 You need 2 tokens to buy Quick Start.");
 
-        // 1️⃣ compute new multiplier
-        const oldMult = data.startBalanceMultiplier || 1;
-        const newMult = oldMult * 1.5;
+        // new: push an op onto startBalanceOps
+        const ops = data.startBalanceOps || [];
+        ops.push({ type: 'boost', value: 50 });
 
-        // 2️⃣ save it, deduct token & record history
-        await update(playerRef, {
-          startBalanceMultiplier: newMult,
-          purchaseTokens:         tokens - 1,
-          modifierHistory: [
-            ...(data.modifierHistory || []),
-            `Starting Balance ${newMult.toFixed(2)}x`
-          ]
-        });
+        const history = data.modifierHistory || [];
+        history.push(`Quick Start: +50 starting balance`);
 
-        // 3️⃣ feedback
-        alert(`💰 Your next rounds will start with ${newMult.toFixed(2)}x the base balance.`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+
+            
+      await update(playerRef, {
+        startBalanceOps:  ops,
+        purchaseTokens:   tokens - 2,
+        modifierHistory:  history
+      });
+
+      alert(`🚀 Quick Start purchased! Next round you start with +50 bonus.`);
+      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+
       }
     },
+
     "Humble Beginnings": {
       name: "Humble beginnings",
       desc: "Halve your next round's starting balance and increase all win multipliers by 1.25x",
       apply: async () => {
-        const snap   = await get(playerRef);
-        const data   = snap.val() || {};
-        const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+      const snap   = await get(playerRef);
+      const data   = snap.val() || {};
+      const tokens = data.purchaseTokens || 0;
+      if (tokens < 1) return alert("🛑 You need 1 token to buy Humble Beginnings.");
 
-        // 1️⃣ Compute new start balance multiplier (divide by 2 each purchase)
-        const oldSBMult = data.startBalanceMultiplier || 1;
-        const newSBMult = oldSBMult / 2;
+      const ops = data.startBalanceOps || [];
+      ops.push({ type: 'mult', value: 0.5 });
 
-        // 2️⃣ Compute new stage multipliers (×1.25 each purchase)
-        const oldMults = data.multipliers || {1:2,2:3,3:4,4:20,5:500};
-        const newMults = {};
-        for (const [stage, m] of Object.entries(oldMults)) {
-          newMults[stage] = Math.round(m * 1.25);
-        }
+      const history = data.modifierHistory || [];
+      history.push(`Humble Beginnings: halve starting balance`);
 
-        // 3️⃣ Track how many times they've bought this
-        const newCount = (data.humbleCount || 0) + 1;
+      await update(playerRef, {
+        startBalanceOps:  ops,
+        purchaseTokens:   tokens - 1,
+        modifierHistory:  history
+      });
 
-        // 4️⃣ Deduct token and record everything
-        const newTokens = tokens - 1;
-        const history   = data.modifierHistory || [];
-        history.push(`Half starting balance, all multipliers 1.25x #${newCount}`);
+      alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
+      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
 
-        await update(playerRef, {
-          humbleCount:            newCount,
-          startBalanceMultiplier: newSBMult,
-          multipliers:            newMults,
-          purchaseTokens:         newTokens,
-          modifierHistory:        history
-        });
+    }
+  },
 
-        alert(
-          `Humble beginnings purchased (${newCount}x)!\n` +
-          `→ Next round start balance: ${newSBMult.toFixed(2)}x base\n`
-        );
-        document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
-      }
-    },
     "Clutch King": {
       name: "Clutch King",
       desc: "Gain +1 multiplier on bets once you're past halfway through your max bets",
@@ -2425,7 +2527,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         const fullDeck = buildPlayerDeck(data);
         const shuffled = [...fullDeck].sort(() => Math.random() - 0.5);
@@ -2453,7 +2555,7 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           witchCauldronMap: mergedMap,
-          purchaseTokens: tokens - 1,
+          purchaseTokens: tokens - 2,
           modifierHistory: [
             ...(data.modifierHistory || []),
             `Witch's Cauldron: 7 cards now act as ${sharedValue} of ${sharedSuit}`
@@ -2461,7 +2563,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert("🧪 Witch's Cauldron is bubbling! Those 7 cards now share the same number.");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Cursed Loan": {
@@ -2645,7 +2747,7 @@ async function showShopOptions(isWinner) {
 
     // calculate cost:
     let cost = 1; 
-    if (name === "Remove Diamonds & Clubs") cost = 4;
+    // if (name === "Remove Diamonds & Clubs") cost = 4;
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
@@ -2653,12 +2755,14 @@ async function showShopOptions(isWinner) {
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
-      "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier"
+      "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier",
+      "Witch's Cauldron", "Quick Start"
     ].includes(name)) {
       cost = 2;
     }
     if ([
-      "Stage 1 Fright", "Cursed Loan"
+      "Stage 1 Fright", "Cursed Loan", "Remove 4 Clubs", "Remove 4 Spades",
+      "Remove 4 Hearts", "Remove 4 Diamonds"
     ].includes(name)) {
       cost = 3;
     }
@@ -2685,13 +2789,21 @@ async function showShopOptions(isWinner) {
     btn.innerText = playerData.purchaseTokens >= cost ? 'Purchase' : 'Insufficient Tokens';
     btn.disabled = playerData.purchaseTokens < cost;
     btn.onclick = async () => {
-      if (playerData.purchaseTokens < cost) return;
-      await mod.apply();
-      btn.disabled = true;
-      btn.textContent = 'Purchased';
-      // update the on‑screen tokens count
-      document.getElementById('playerTokens')
-              .textContent = `Tokens: ${Math.max(0, playerData.purchaseTokens - cost)}`;
+    // 1) Fetch freshest player data & token count
+    const psnapFresh = await get(playerRef);
+    const fresh     = psnapFresh.val() || {};
+    const tokens    = fresh.purchaseTokens || 0;
+    if (tokens < cost) {
+      return alert(`🛑 You need ${cost} token${cost>1?'s':''} to buy this.`);
+    }   
+    // 2) Apply the modifier (mod.apply will deduct tokens & update the display)
+    await mod.apply();    
+    // 3) Disable the button & mark purchased
+    btn.disabled   = true;
+    btn.textContent = 'Purchased';    
+    // 4) (Optional) re‑render the shop so any new costs/availability update
+    // showShopOptions(fresh.isRoundWinner);
+
 
     };
 
@@ -2916,9 +3028,15 @@ async function resetAllPlayers(players) {
     const snap   = await get(pRef);
     const pdata  = snap.val() || {};
 
-    // apply their multiplier (default = 1)
-    const mult      = pdata.startBalanceMultiplier || 1;
-    const startAmt  = Math.floor(100 * mult);
+    let amt = 100;
+    (pdata.startBalanceOps || []).forEach(op => {
+      if (op.type === 'boost') {
+        amt += op.value;
+      } else if (op.type === 'mult') {
+        amt *= op.value;
+      }
+    });
+    const startAmt = Math.floor(amt);
 
     await update(pRef, {
       balance:      startAmt,
@@ -2968,9 +3086,9 @@ async function grantTokenAndShowShop(winners) {
   "Bonus Bets", "Super Multiplier", "Bonus Interest",
   "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", 
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
-  "Hail Mary","Blue Suits & Boost","Remove Diamonds & Clubs","Snow-baller","Ace & Two","Faceless",
-  "Remove 2-4","Starting Balance Boost","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-  "Cursed Loan", "Summon Kings"
+  "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
+  "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
+  "Cursed Loan", "Summon Kings", "Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds"
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
