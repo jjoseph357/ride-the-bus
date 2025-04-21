@@ -2356,31 +2356,37 @@ async function showShopOptions(isWinner) {
     },
     "Quick Start": {
       name: "Quick Start",
-      desc: "Next round's starting balance +50",
+      desc: "Next round’s starting balance +50 (cost ↑ each time)",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
+        const count  = data.quickStartCount || 0;
+        const cost   = 2 + count;                     // base 2, +1 per prior purchase
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("🛑 You need 2 tokens to buy Quick Start.");
+        if (tokens < cost) {
+          return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
+        }
 
-        // new: push an op onto startBalanceOps
-        const ops = data.startBalanceOps || [];
+        // record the boost op
+        const ops     = data.startBalanceOps || [];
         ops.push({ type: 'boost', value: 50 });
 
+        // increment purchase count
+        const newCount = count + 1;
+
         const history = data.modifierHistory || [];
-        history.push(`Quick Start: +50 starting balance`);
+        history.push(`Quick Start #${newCount}: +50 starting balance`);
 
+        await update(playerRef, {
+          startBalanceOps:  ops,
+          quickStartCount:  newCount,
+          purchaseTokens:   tokens - cost,
+          modifierHistory:  history
+        });
 
-            
-      await update(playerRef, {
-        startBalanceOps:  ops,
-        purchaseTokens:   tokens - 2,
-        modifierHistory:  history
-      });
-
-      alert(`🚀 Quick Start purchased! Next round you start with +50 bonus.`);
-      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
-
+        alert(`🚀 Quick Start purchased (#${newCount})! Next round you start with +50 bonus.`);
+        document.getElementById('playerTokens')
+                .textContent = `Tokens: ${tokens - cost}`;
       }
     },
 
@@ -2752,11 +2758,15 @@ async function showShopOptions(isWinner) {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
     }
+    if (name === "Quick Start") {
+      const count = playerData.quickStartCount || 0;
+      cost = count + 2;
+    }
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier",
-      "Witch's Cauldron", "Quick Start"
+      "Witch's Cauldron"
     ].includes(name)) {
       cost = 2;
     }
