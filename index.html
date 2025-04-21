@@ -906,8 +906,16 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
     // ─── 1) Apply Witch’s Cauldron mapping *before* filtering ───
     if (data.witchCauldronMap?.[attempt.text]) {
       const { value: mappedValue, suit: mappedSuit } = data.witchCauldronMap[attempt.text];
-      attempt.value     = mappedValue;
-      attempt.suit      = mappedSuit;
+      // Update suit, value, AND text so createCardDisplay shows correctly
+      attempt.value = mappedValue;
+      attempt.suit  = mappedSuit;
+      attempt.text  = (
+        mappedValue === 14 ? 'A' :
+        mappedValue === 13 ? 'K' :
+        mappedValue === 12 ? 'Q' :
+        mappedValue === 11 ? 'J' :
+        mappedValue.toString()
+      ) + mappedSuit;
       attempt._cauldron = true;
     }
 
