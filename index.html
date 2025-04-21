@@ -913,8 +913,20 @@ Object.entries(dupCounts).forEach(([text, count]) => {
     const idx     = Math.floor(Math.random() * pool.length);
     const attempt = pool.splice(idx, 1)[0];
 
+    // 1️⃣ Apply any cauldron remap **before** filtering
+    if (data.witchCauldronMap?.[attempt.text]) {
+      const { value: mappedValue, suit: mappedSuit } = data.witchCauldronMap[attempt.text];
+      attempt.value    = mappedValue;
+      attempt.suit     = mappedSuit;
+      attempt._cauldron = true;
+    }
+
+    // 2️⃣ Now compute effective value for duplicate filtering
+    const effectiveValue = attempt.value;
+
     const dupCard   = drawnCards.some(c => c.text  === attempt.text);
-    const dupValue  = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
+    const dupValue = excludeSameValue
+    && drawnCards.some(c => c.value === effectiveValue);
     const removeSuit = data.removeDiamondsClubs
                     && (attempt.suit === '♦' || attempt.suit === '♣');
     const removeFace = facelessCount > 0
