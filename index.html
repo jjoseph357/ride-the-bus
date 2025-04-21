@@ -1058,7 +1058,12 @@ async function handleGuess(guess, state) {
       }
 
       // (If you had any other “once‑per‑draw” flags, handle them here…)
-      
+      // ─── Power Rush support ─────────────────────────────────────
+      if (pdata.powerRushRoundsLeft > 0) {
+        multiplier += 3;
+        console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
+      }
+
       // 3) Now apply your bet modifiers in order
       // Clutch King (if you’ve passed halfway)
       if (
@@ -1167,6 +1172,12 @@ async function handleGuess(guess, state) {
         await update(playerRef, { bonusMult1_25Active: false });
       }
 
+      // ─── Power Rush support ─────────────────────────────────────
+      if (pdata.powerRushRoundsLeft > 0) {
+        multiplier += 3;
+        console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
+      }
+
       // 5) Now apply bet‑modifiers in order
       if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
         multiplier += pdata.clutchKingCount;
@@ -1270,6 +1281,12 @@ async function handleGuess(guess, state) {
         await update(playerRef, { bonusMult1_25Active: false });
       }
 
+      // ─── Power Rush support ─────────────────────────────────────
+      if (pdata.powerRushRoundsLeft > 0) {
+        multiplier += 3;
+        console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
+      }
+
       // 5) Bet‑modifiers
       if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
         multiplier += pdata.clutchKingCount;
@@ -1367,6 +1384,12 @@ async function handleGuess(guess, state) {
       if (pdata.bonusMult1_25Active) {
         multiplier = Math.round(multiplier * 1.25);
         await update(playerRef, { bonusMult1_25Active: false });
+      }
+
+      // ─── Power Rush support ─────────────────────────────────────
+      if (pdata.powerRushRoundsLeft > 0) {
+        multiplier += 3;
+        console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
       }
 
       // 5) Bet‑modifiers
@@ -1960,7 +1983,8 @@ async function showShopOptions(isWinner) {
       "Hail Mary","Blue Suits & Boost","Snow-baller", "Summon Kings",
       "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
       "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-      "Cursed Loan","Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds"
+      "Cursed Loan","Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds",
+      "Power Rush"
     ];
     // shuffle and take the same count as before
     // 3) Shuffle the current shared bet‑modifiers (preserving count)
@@ -2356,37 +2380,31 @@ async function showShopOptions(isWinner) {
     },
     "Quick Start": {
       name: "Quick Start",
-      desc: "Next round’s starting balance +50 (cost ↑ each time)",
+      desc: "Next round's starting balance +50",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
-        const count  = data.quickStartCount || 0;
-        const cost   = 2 + count;                     // base 2, +1 per prior purchase
         const tokens = data.purchaseTokens || 0;
-        if (tokens < cost) {
-          return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
-        }
+        if (tokens < 2) return alert("🛑 You need 2 tokens to buy Quick Start.");
 
-        // record the boost op
-        const ops     = data.startBalanceOps || [];
+        // new: push an op onto startBalanceOps
+        const ops = data.startBalanceOps || [];
         ops.push({ type: 'boost', value: 50 });
 
-        // increment purchase count
-        const newCount = count + 1;
-
         const history = data.modifierHistory || [];
-        history.push(`Quick Start #${newCount}: +50 starting balance`);
+        history.push(`Quick Start: +50 starting balance`);
 
-        await update(playerRef, {
-          startBalanceOps:  ops,
-          quickStartCount:  newCount,
-          purchaseTokens:   tokens - cost,
-          modifierHistory:  history
-        });
 
-        alert(`🚀 Quick Start purchased (#${newCount})! Next round you start with +50 bonus.`);
-        document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - cost}`;
+            
+      await update(playerRef, {
+        startBalanceOps:  ops,
+        purchaseTokens:   tokens - 2,
+        modifierHistory:  history
+      });
+
+      alert(`🚀 Quick Start purchased! Next round you start with +50 bonus.`);
+      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+
       }
     },
 
@@ -2659,6 +2677,31 @@ async function showShopOptions(isWinner) {
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
+    "Power Rush": {
+      name: "Power Rush",
+      desc: "For 3 rounds, get +3 to all multipliers",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < 3) return alert("You don't have enough tokens.");
+
+        // Increment or initialize the rounds‑left counter
+        const newRounds = (data.powerRushRoundsLeft || 0) + 3;
+        const history   = data.modifierHistory || [];
+        history.push(`Power Rush: +3 mult for ${newRounds} rounds total`);
+
+        await update(playerRef, {
+          powerRushRoundsLeft: newRounds,
+          purchaseTokens:      tokens - 3,
+          modifierHistory:     history
+        });
+
+        alert(`🔥 Power Rush! +3 multipliers for the next ${newRounds} rounds.`);
+        document.getElementById('playerTokens')
+                .textContent = `Tokens: ${tokens - 3}`;
+      }
+    },
 
 
     ...[1,2,3,4].reduce((map, stage) => {
@@ -2673,10 +2716,12 @@ async function showShopOptions(isWinner) {
           const snap   = await get(playerRef);
           const data   = snap.val() || {};
           const tokens = data.purchaseTokens || 0;
-          if (tokens <= 0) return alert("Not enough tokens.");
+          const already = data[countKey] || 0;
+          const cost    = already + 1;
 
-          // bump your purchase count for this stage
-          const count = (data[countKey] || 0) + 1;
+          if (tokens < cost) return alert(`You need ${cost} tokens to buy this.`);
+
+          const count = already + 1;
 
           // rebuild multipliers from whatever's in the DB (with sane defaults)
           const base    = {1:2,2:3,3:4,4:20,5:500};
@@ -2686,7 +2731,7 @@ async function showShopOptions(isWinner) {
           // persist everything in one go
           await update(playerRef, {
             multipliers:       newMult,
-            purchaseTokens:    tokens - 1,
+            purchaseTokens:    tokens - cost,
             [countKey]:        count,
             modifierHistory:   [...(data.modifierHistory||[]), `Stage ${stage} Boost +${count}`]
           });
@@ -2758,15 +2803,11 @@ async function showShopOptions(isWinner) {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
     }
-    if (name === "Quick Start") {
-      const count = playerData.quickStartCount || 0;
-      cost = count + 2;
-    }
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier",
-      "Witch's Cauldron"
+      "Witch's Cauldron", "Quick Start"
     ].includes(name)) {
       cost = 2;
     }
@@ -2782,8 +2823,9 @@ async function showShopOptions(isWinner) {
     const boostMatch = name.match(/^Stage (\d) Boost$/);
     if (boostMatch) {
       const stg  = boostMatch[1];
-      const next = (playerData[`stage${stg}BoostCount`] || 0) + 1;
-      desc = `Increase Stage ${stg} multiplier by +${next}`;
+      const prev = playerData[`stage${stg}BoostCount`] || 0;
+      cost = prev + 1;
+      desc = `Increase Stage ${stg} multiplier by +${prev+1}`;
     }
 
 
@@ -3037,6 +3079,7 @@ async function resetAllPlayers(players) {
     const pRef   = ref(db, `games/${lobbyCode}/players/${id}`);
     const snap   = await get(pRef);
     const pdata  = snap.val() || {};
+    const left = Math.max((pdata.powerRushRoundsLeft || 0) - 1, 0);
 
     let amt = 100;
     (pdata.startBalanceOps || []).forEach(op => {
@@ -3046,6 +3089,7 @@ async function resetAllPlayers(players) {
         amt *= op.value;
       }
     });
+    
     const startAmt = Math.floor(amt);
 
     await update(pRef, {
@@ -3056,6 +3100,7 @@ async function resetAllPlayers(players) {
       roundBetBonus: 0,
       stage1FrightTriggers: 0,
       stage1FrightArmed:    false,
+      powerRushRoundsLeft:   left,
     });
   }
 
@@ -3098,7 +3143,8 @@ async function grantTokenAndShowShop(winners) {
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
-  "Cursed Loan", "Summon Kings", "Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds"
+  "Cursed Loan", "Summon Kings", "Remove 4 Clubs", "Remove 4 Spades", "Remove 4 Hearts", "Remove 4 Diamonds",
+  "Power Rush"
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
@@ -3171,13 +3217,8 @@ async function checkRoundCompletion() {
     if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
-      
-      let amt = 100;
-      (pdata.startBalanceOps || []).forEach(op => {
-        if (op.type === 'boost') amt += op.value;
-        else if (op.type === 'mult')  amt *= op.value;
-      });
-      const newBalance = Math.floor(amt);
+      const startMult  = pdata.startBalanceMultiplier || 1;
+      const newBalance = Math.floor(100 * startMult);
 
       await update(playerRef, {
         roundsWon:           (pdata.roundsWon || 0) + 1,
@@ -3248,13 +3289,9 @@ async function checkRoundCompletion() {
     if (solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
-      let amt = 100;
-      (pdata.startBalanceOps || []).forEach(op => {
-        if (op.type === 'boost') amt += op.value;
-        else if (op.type === 'mult')  amt *= op.value;
-      });
-      const newBalance = Math.floor(amt);     
-      
+      const startMult  = pdata.startBalanceMultiplier || 1;
+      const newBalance = Math.floor(100 * startMult);
+
       await update(playerRef, {
         roundsWon:           (pdata.roundsWon || 0) + 1,
         balance:             newBalance,
