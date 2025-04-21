@@ -3161,8 +3161,13 @@ async function checkRoundCompletion() {
     if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
-      const startMult  = pdata.startBalanceMultiplier || 1;
-      const newBalance = Math.floor(100 * startMult);
+      
+      let amt = 100;
+      (pdata.startBalanceOps || []).forEach(op => {
+        if (op.type === 'boost') amt += op.value;
+        else if (op.type === 'mult')  amt *= op.value;
+      });
+      const newBalance = Math.floor(amt);
 
       await update(playerRef, {
         roundsWon:           (pdata.roundsWon || 0) + 1,
@@ -3233,9 +3238,13 @@ async function checkRoundCompletion() {
     if (solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
       const pdata      = psnap.val() || {};
-      const startMult  = pdata.startBalanceMultiplier || 1;
-      const newBalance = Math.floor(100 * startMult);
-
+      let amt = 100;
+      (pdata.startBalanceOps || []).forEach(op => {
+        if (op.type === 'boost') amt += op.value;
+        else if (op.type === 'mult')  amt *= op.value;
+      });
+      const newBalance = Math.floor(amt);     
+      
       await update(playerRef, {
         roundsWon:           (pdata.roundsWon || 0) + 1,
         balance:             newBalance,
