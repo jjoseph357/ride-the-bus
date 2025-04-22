@@ -365,7 +365,7 @@
   let soloMode = false;
 
 
-  async function displayMultipliers() {
+async function displayMultipliers() {
   const list = document.getElementById("multiplierBonuses");
   if (!list || !playerRef) return;
 
@@ -373,9 +373,20 @@
   const player = snap.val();
   const mults = player?.multipliers || {};
 
-  list.innerHTML = Object.entries(mults).map(([stage, mult]) =>
-    `<li>Stage ${stage}: ${mult}x</li>`
-  ).join('');
+  // build the <li> entries for each stage
+    const items = Object.entries(mults).map(
+    ([stage, mult]) => `<li>Stage ${stage}: ${mult}x</li>`
+  );
+
+  // if Power Rush is active, append its info
+  const roundsLeft = player.powerRushRoundsLeft || 0;
+  if (roundsLeft > 0) {
+    items.push(
+      `<li>🔥 Power Rush: +3 for ${roundsLeft} round${roundsLeft>1?'s':''}</li>`
+    );
+  }
+
+  list.innerHTML = items.join("");
 }
 
 
@@ -2384,7 +2395,7 @@ async function showShopOptions(isWinner) {
       const snap   = await get(playerRef);
       const data   = snap.val() || {};
       const count  = data.quickStartCount || 0;
-      const cost   = 2 + count;                     // base 2, +1 per prior purchase
+      const cost   = 2 + count *  2;                     // base 2, +1 per prior purchase
       const tokens = data.purchaseTokens || 0;
       if (tokens < cost) {
           return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
@@ -2419,28 +2430,36 @@ async function showShopOptions(isWinner) {
       name: "Humble beginnings",
       desc: "Halve your next round's starting balance and increase all win multipliers by 1.25x",
       apply: async () => {
-      const snap   = await get(playerRef);
-      const data   = snap.val() || {};
-      const tokens = data.purchaseTokens || 0;
-      if (tokens < 1) return alert("🛑 You need 1 token to buy Humble Beginnings.");
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < 1) return alert("🛑 You need 1 token to buy Humble Beginnings.");
 
-      const ops = data.startBalanceOps || [];
-      ops.push({ type: 'mult', value: 0.5 });
+        const ops = data.startBalanceOps || [];
+        ops.push({ type: 'mult', value: 0.5 });
 
-      const history = data.modifierHistory || [];
-      history.push(`Humble Beginnings: halve starting balance`);
+        // 2) Also boost all existing stage multipliers by 1.25×
+        const oldMults = data.multipliers || {1:2,2:3,3:4,4:20,5:500};
+        const boostedMults = {};
+        for (const [stage, m] of Object.entries(oldMults)) {
+          boostedMults[stage] = Math.round(m * 1.25);
+        }
 
-      await update(playerRef, {
-        startBalanceOps:  ops,
-        purchaseTokens:   tokens - 1,
-        modifierHistory:  history
-      });
+        const history = data.modifierHistory || [];
+        history.push(`Humble Beginnings: halve starting balance  & 1.25x multiplier`);      
+        
+        await update(playerRef, {
+          startBalanceOps:  ops,
+          multipliers:      boostedMults,
+          purchaseTokens:   tokens - 1,
+          modifierHistory:  history
+        });
 
-      alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
-      document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
 
-    }
-  },
+      }
+    },
 
     "Clutch King": {
       name: "Clutch King",
@@ -2808,7 +2827,7 @@ async function showShopOptions(isWinner) {
     // if (name === "Remove Diamonds & Clubs") cost = 4;
     if (name === "Quick Start") {
        const count = playerData.quickStartCount || 0;
-       cost = count + 2;
+       cost = count*2 + 2;
      }
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
@@ -2818,13 +2837,13 @@ async function showShopOptions(isWinner) {
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier",
-      "Witch's Cauldron", "Quick Start"
+      "Witch's Cauldron"
     ].includes(name)) {
       cost = 2;
     }
     if ([
       "Stage 1 Fright", "Cursed Loan", "Remove 2 Clubs", "Remove 2 Spades",
-      "Remove 2 Hearts", "Remove 2 Diamonds"
+      "Remove 2 Hearts", "Remove 2 Diamonds", "Power Rush"
     ].includes(name)) {
       cost = 3;
     }
