@@ -759,6 +759,27 @@ async function applyCardUpgradeBonus(card) {
   const snap = await get(playerRef);
   const playerData = snap.val();
   const match = (playerData.cardUpgrades || []).find(up => up.text === card.text);
+  
+  // ─── Kingpin support ─────────────────────────────────────────
+  if (playerData.kingpinCount > 0 && card.value === 13) {
+    // bump **all** stages by kingpinCount
+    const oldMults = playerData.multipliers || {};
+    const newMults = {};
+
+    // for each stage key, add the stack count
+    for (const [stage, m] of Object.entries(oldMults)) {
+      newMults[stage] = m + playerData.kingpinCount;
+    }
+
+    await update(playerRef, { multipliers: newMults });
+    console.log(
+      `Kingpin: boosted all multipliers by ${playerData.kingpinCount} (now ${JSON.stringify(newMults)})`
+    );
+    displayMultipliers()
+
+  }
+
+
   if (!match) return;
 
   if (match.effect === 'Gain 25% of bet') {
@@ -779,7 +800,7 @@ async function applyCardUpgradeBonus(card) {
   if (match.effect === '+1 bet') {
     // set a one‑time flag so cash‑out logic knows to give +1 bet
     await update(playerRef, { bonusPlusOneActive: true });
-    console.log(`+1‑bet card "${card.text}" drawn: bonus armed`);
+    console.log(`+1-bet card "${card.text}" drawn: bonus armed`);
   }
   
   if (match.effect === 'remove_card') {
@@ -809,16 +830,7 @@ async function applyCardUpgradeBonus(card) {
     await update(playerRef, { bonusMult1_25Active: true });
     console.log(`1.25x card drawn: next cash-out this bet will be boosted`);
   }
-  // ─── Kingpin support ─────────────────────────────────────────
-  if ((playerData.kingpinCount || 0) > 0 && card.value === 13) {
-    const stage    = (await get(stateRef)).val().currentStage;
-    const oldMults = playerData.multipliers || {};
-    const base     = oldMults[stage] ?? multipliers[stage];
-    const boosted  = base + playerData.kingpinCount;
-    const newMults = { ...oldMults, [stage]: boosted };
-    await update(playerRef, { multipliers: newMults });
-    console.log(`Kingpin: +${playerData.kingpinCount} multiplier applied at Stage ${stage} for drawing ${card.text}`);
-  }
+  displayMultipliers()
 }
 
 function createCardDisplay(card, effect = null) {
@@ -2082,6 +2094,7 @@ async function showShopOptions(isWinner) {
           modifierHistory: history
         });
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        displayMultipliers()
       }
     },
     "Hail Mary": {
@@ -2157,6 +2170,7 @@ async function showShopOptions(isWinner) {
 
         alert("🎉 You've unlocked the Blue Suits and your multipliers are now 2x higher!");
         document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
+        displayMultipliers()
       }
     },
     // "Remove Diamonds & Clubs": {
@@ -2457,7 +2471,7 @@ async function showShopOptions(isWinner) {
 
         alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
-
+        displayMultipliers()
       }
     },
 
@@ -2726,6 +2740,7 @@ async function showShopOptions(isWinner) {
         alert(`🔥 Power Rush! +3 multipliers for the next ${newRounds} rounds.`);
         document.getElementById('playerTokens')
                 .textContent = `Tokens: ${tokens - 3}`;
+        displayMultipliers()
       }
     },
 
