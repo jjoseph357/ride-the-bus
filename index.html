@@ -2395,7 +2395,7 @@ async function showShopOptions(isWinner) {
       const snap   = await get(playerRef);
       const data   = snap.val() || {};
       const count  = data.quickStartCount || 0;
-      const cost   = 2 + count *  2;                     // base 2, +1 per prior purchase
+      const cost   = 2 + count;                     // base 2, +1 per prior purchase
       const tokens = data.purchaseTokens || 0;
       if (tokens < cost) {
           return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
@@ -2827,7 +2827,7 @@ async function showShopOptions(isWinner) {
     // if (name === "Remove Diamonds & Clubs") cost = 4;
     if (name === "Quick Start") {
        const count = playerData.quickStartCount || 0;
-       cost = count*2 + 2;
+       cost = count + 2;
      }
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
