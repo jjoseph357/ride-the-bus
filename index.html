@@ -2001,7 +2001,7 @@ async function showShopOptions(isWinner) {
     // 3) Build a fresh sharedBetModifiers list
     const allKeys = [
       "Bonus Bets","Super Multiplier","Bonus Interest",
-      "Stage 1 Boost","Stage 2 Boost","Stage 3 Boost","Stage 4 Boost",
+      "Stage 1 Boost","Stage 2 Boost","Stage 3 Boost","Stage 4 Boost", "Stage 5 Boost",
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield","Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Blue Suits & Boost","Snow-baller", "Summon Kings",
       "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
@@ -2745,14 +2745,14 @@ async function showShopOptions(isWinner) {
     },
 
 
-    ...[1,2,3,4].reduce((map, stage) => {
+    ...[1,2,3,4,5].reduce((map, stage) => {
       const key       = `Stage ${stage} Boost`;
       const countKey  = `stage${stage}BoostCount`;
 
       map[key] = {
         name: key,
         // desc is just a fallback; we'll compute the real one in the UI
-        desc: `Increase Stage ${stage} multiplier by +1`,
+        desc: `Increase Stage ${stage} multiplier by +${stage}`,
         apply: async () => {
           const snap   = await get(playerRef);
           const data   = snap.val() || {};
@@ -2767,18 +2767,19 @@ async function showShopOptions(isWinner) {
           // rebuild multipliers from whatever's in the DB (with sane defaults)
           const base    = {1:2,2:3,3:4,4:20,5:500};
           const oldMult = { ...base, ...(data.multipliers||{}) };
-          const newMult = { ...oldMult, [stage]: oldMult[stage] + count };
+          const newMult = { ...oldMult, [stage]: oldMult[stage] + stage };
 
           // persist everything in one go
           await update(playerRef, {
             multipliers:       newMult,
             purchaseTokens:    tokens - cost,
             [countKey]:        count,
-            modifierHistory:   [...(data.modifierHistory||[]), `Stage ${stage} Boost +${count}`]
+            modifierHistory:   [...(data.modifierHistory||[]), `Stage ${stage} Boost +${stage}`]
           });
 
-          alert(`Stage ${stage} multiplier increased by +${count} (now ${newMult[stage]}x)!`);
+          alert(`Stage ${stage} multiplier increased by +${stage} (now ${newMult[stage]}x)!`);
           document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+          displayMultipliers()
         }
       };
       return map;
@@ -2870,7 +2871,7 @@ async function showShopOptions(isWinner) {
       const stg  = boostMatch[1];
       const prev = playerData[`stage${stg}BoostCount`] || 0;
       cost = prev + 1;
-      desc = `Increase Stage ${stg} multiplier by +${prev+1}`;
+      desc = `Increase Stage ${stg} multiplier by +${stg}`;
     }
 
 
@@ -3184,7 +3185,7 @@ async function grantTokenAndShowShop(winners) {
   // 🧠 Generate shared random modifiers for this shop session
   const activeModifierKeys = [
   "Bonus Bets", "Super Multiplier", "Bonus Interest",
-  "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", 
+  "Stage 1 Boost", "Stage 2 Boost", "Stage 3 Boost", "Stage 4 Boost", "Stage 5 Boost",
   "Stage 1 Shield", "Stage 2 Shield", "Stage 3 Shield", "Stage 4 Shield", "Stage 5 Shield",
   "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
