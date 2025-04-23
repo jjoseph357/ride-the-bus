@@ -721,7 +721,7 @@ window.addEventListener("DOMContentLoaded", () => {
       // If only one player, give 8 bets and set threshold
       if (playerCount === 1) {
         soloMode = true;
-        maxBetsPerPlayer = 8;
+        maxBetsPerPlayer = 10;
         // initialize threshold at $100
         await set(stateRef, {
           gameStarted:      true,
