@@ -968,7 +968,22 @@ async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
   return card;
 }
 
-
+async function applyOneBetBonus() {
+  const snap = await get(playerRef);
+  const p    = snap.val() || {};
+  if (!p.bonusPlusOneActive) return;
+  const rb = p.roundBetBonus || 0;
+  if (rb < 4) {
+    await update(playerRef, {
+      roundBetBonus:      rb + 1,
+      bonusPlusOneActive: false
+    });
+    console.log(`Applied +1-bet (roundBonus now ${rb + 1})`);
+  } else {
+    await update(playerRef, { bonusPlusOneActive: false });
+    console.log("+1-bet drawn but already at cap");
+  }
+}
 
 
 
@@ -1103,17 +1118,7 @@ async function handleGuess(guess, state) {
       }
 
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
-      const psnap2 = await get(playerRef);
-      const pdata2 = psnap2.val() || {};
-      // ─── Only if you actually drew the +1‑bet card ────────────
-      if (pdata.bonusPlusOneActive) {
-        const roundBonus = pdata.roundBetBonus || 0;
-        await update(playerRef, {
-          roundBetBonus:       roundBonus + 1,
-          bonusPlusOneActive:  false   // clear the flag
-        });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
-      }
+      await applyOneBetBonus();
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
@@ -1212,17 +1217,7 @@ async function handleGuess(guess, state) {
         multiplier *= 2;
       }
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
-      const psnap2 = await get(playerRef);
-      const pdata2 = psnap2.val() || {};
-      // ─── Only if you actually drew the +1‑bet card ────────────
-      if (pdata.bonusPlusOneActive) {
-        const roundBonus = pdata.roundBetBonus || 0;
-        await update(playerRef, {
-          roundBetBonus:       roundBonus + 1,
-          bonusPlusOneActive:  false   // clear the flag
-        });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
-      }
+      await applyOneBetBonus();
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
@@ -1321,17 +1316,8 @@ async function handleGuess(guess, state) {
         multiplier *= 2;
       }
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
-      const psnap2 = await get(playerRef);
-      const pdata2 = psnap2.val() || {};
-      // ─── Only if you actually drew the +1‑bet card ────────────
-      if (pdata.bonusPlusOneActive) {
-        const roundBonus = pdata.roundBetBonus || 0;
-        await update(playerRef, {
-          roundBetBonus:       roundBonus + 1,
-          bonusPlusOneActive:  false   // clear the flag
-        });
-        console.log(`Applied +1-bet card upgrade on cash-out`);
-      }
+      await applyOneBetBonus();
+
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
         multiplier = multiplier / 3;
@@ -1426,17 +1412,7 @@ async function handleGuess(guess, state) {
         multiplier *= 2;
       }
       // ─── New: grant +1 bet here if you own the '+1 bet' upgrade ────
-      const psnap2 = await get(playerRef);
-      const pdata2 = psnap2.val() || {};
-      // ─── Only if you actually drew the +1‑bet card ────────────
-      if (pdata.bonusPlusOneActive) {
-        const roundBonus = pdata.roundBetBonus || 0;
-        await update(playerRef, {
-          roundBetBonus:       roundBonus + 1,
-          bonusPlusOneActive:  false   // clear the flag
-        });
-        console.log(`Applied +1‑bet card upgrade on cash-out`);
-      }
+      await applyOneBetBonus();
 
       // Stage 1 Fright penalty?
       if (pdata.stage1FrightArmed) {
@@ -2045,28 +2021,41 @@ async function showShopOptions(isWinner) {
   const betModifiersMap = {
     "Bonus Bets": {
       name: "Bonus Bets",
-      desc: "+2 bets per round",
+      // show the dynamic cost in the description if you like:
+      desc: "+2 bets per round (cost ↑ by 2 each time)",
       apply: async () => {
         const snap = await get(playerRef);
-        const data = snap.val();
-        const currentBonus = data.betModifierBonus || 0;
-        const currentTokens = data.purchaseTokens || 0;
-        if (currentTokens < 2) return alert("You need 2 tokens to buy this.");
+        const data = snap.val() || {};
 
-        alert("You will now be able to make 2 more bets this round!");
+        // 1) how many times you've already bought it
+        const count = data.bonusBetsCount || 0;
+        // 2) cost = 2 + 2×count
+        const cost  = 2 + (count * 2);
+        const tokens = data.purchaseTokens || 0;
+        if (tokens < cost) {
+          return alert(`You need ${cost} tokens to buy Bonus Bets.`);
+        }
 
-        // Update history
-        const history = data.modifierHistory || [];
-        history.push("+2 bets per round");
+        // 3) apply the +2 bets
+        const newBonus = (data.betModifierBonus || 0) + 2;
+        // 4) bump the purchase count
+        const newCount = count + 1;
+        // 5) record history
+        const history = [...(data.modifierHistory||[]), `+2 bets per round (#${newCount})`];
 
         await update(playerRef, {
-          betModifierBonus: currentBonus + 2,
-          purchaseTokens:   currentTokens - 2,
-          modifierHistory: history
+          betModifierBonus:  newBonus,
+          purchaseTokens:    tokens - cost,
+          bonusBetsCount:    newCount,
+          modifierHistory:   history
         });
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+
+        alert(`Bonus Bets purchased (#${newCount})! +2 bets per round.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - cost}`;
+        displayMultipliers();
       }
     },
+
     "Super Multiplier": {
       name: "Super Multiplier",
       desc: "Increase all win multipliers by 1.25x, -2 bets",
@@ -2571,7 +2560,7 @@ async function showShopOptions(isWinner) {
         if (tokens < 3) return alert("You don't have enough tokens.");
 
         const history = data.modifierHistory || [];
-        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet (max. 3 times)");
+        history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet (max 3 times)");
 
         await update(playerRef, {
           purchaseTokens: tokens - 3,
@@ -2579,7 +2568,7 @@ async function showShopOptions(isWinner) {
           stage1Fright: true    // flag that you own it
         });
 
-        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x (max. 3 times).");
+        alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x (max 3 times).");
         document.getElementById('playerTokens')
                 .textContent = `Tokens: ${tokens - 3}`;
       }
@@ -2845,6 +2834,10 @@ async function showShopOptions(isWinner) {
        const count = playerData.quickStartCount || 0;
        cost = count + 2;
      }
+    if (name === "Bonus Bets") {
+      const count = playerData.bonusBetsCount || 0;
+      cost = 2 + (count * 2);
+    }
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
       cost = count + 1;
@@ -2852,7 +2845,7 @@ async function showShopOptions(isWinner) {
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
-      "Hail Mary","Two-edged","Bonus Bets", "Super Multiplier",
+      "Hail Mary","Two-edged", "Super Multiplier",
       "Witch's Cauldron"
     ].includes(name)) {
       cost = 2;
@@ -2959,7 +2952,7 @@ async function showShopOptions(isWinner) {
 
     // Human‐readable description of the offered upgrade
     const desc = document.createElement('p');
-    if (effectText === '+1 bet')             desc.textContent = '+1 bet if cashed-out';
+    if (effectText === '+1 bet')             desc.textContent = '+1 bet if cashed-out (max 4 per round)';
     else if (effectText === 'Gain 25% of bet') desc.textContent = 'Gain 25% of your bet';
     else if (effectText === 'Gain 10% of Balance') desc.textContent = 'Gain 10% of your balance';
     else if (effectText === 'remove_card')   desc.textContent = 'Remove this card from your deck';
@@ -2983,7 +2976,7 @@ async function showShopOptions(isWinner) {
 
       // 2️⃣ Map effect‐codes → human descriptions
       const mapDesc = {
-        '+1 bet':          `+1 bet if cashed-out`,
+        '+1 bet':          `+1 bet if cashed-out (max 4 per round)`,
         'Gain 25% of bet':   `Gain 25% of your bet`,
         'Gain 10% of Balance':   `Gain 10% of your balance`,
         'remove_card':     `Remove this card from your deck`,
