@@ -743,7 +743,7 @@ window.addEventListener("DOMContentLoaded", () => {
       else                          maxBetsPerPlayer = 7;
 
       const firstPlayerId = Object.keys(players)[0];
-      await set(stateRef, {
+      await update(stateRef, {
         gameStarted:      true,
         currentPlayer:    firstPlayerId,
         currentStage:     0,
@@ -3230,10 +3230,25 @@ async function checkRoundCompletion() {
   const playersSnap = await get(ref(db, `games/${lobbyCode}/players`));
   const players = playersSnap.val();
   const activePlayers = Object.values(players).filter(p => !p.eliminated);
-  const nonEliminated = activePlayers.filter(p => p.balance > 0);
-
   const isSoloMode = Object.keys(players).length === 1;
-  const isDefaultWin = Object.keys(players).length > 1 && nonEliminated.length === 1;
+
+  const finished = activePlayers.filter(p => {
+    const cap = maxBetsPerPlayer
+              + (p.betModifierBonus || 0)  // any shop modifiers that add bets
+              + (p.roundBetBonus    || 0); // any +1-bets from card upgrades
+    return (p.betsMade || 0) >= cap;
+  });
+
+  const unfinished = activePlayers.filter(p => {
+    const cap = maxBetsPerPlayer
+              + (p.betModifierBonus || 0)
+              + (p.roundBetBonus    || 0);
+    return (p.betsMade || 0) < cap;
+  });
+  const isDefaultWin = Object.keys(players).length > 1
+    && unfinished.length === 1
+    && finished.length === activePlayers.length - 1
+    && unfinished[0].balance > Math.max(...finished.map(p => p.balance));
 
   const currentStateSnap = await get(stateRef);
   const currentState = currentStateSnap.val();
@@ -3257,7 +3272,6 @@ async function checkRoundCompletion() {
     const effectiveMax  = maxBetsPerPlayer + permBonus + roundBonus;
     const remainingBets = effectiveMax - (solo.betsMade || 0);
 
-    // ■■■ SAFE‑MARGIN AUTO‑WIN ■■■
     // auto‑win early
     if (remainingBets > 0 && solo.balance > currentThresh) {
       const psnap      = await get(playerRef);
@@ -3419,7 +3433,7 @@ async function checkRoundCompletion() {
     await reshuffleDeck();
 
     // 🧠 Set game state *before* granting tokens/shop
-    await set(stateRef, {
+    await update(stateRef, {
       gameStarted: true,
       currentPlayer: lastPlayerId,
       currentStage: 0,
@@ -3444,6 +3458,8 @@ const allDone = activePlayers.every(p => {
   const effectiveMax = maxBetsPerPlayer + permBonus + roundBonus;
   return p.betsMade >= effectiveMax;
 });
+
+
 if (!allDone) return advanceToNextPlayer();
 
   // NORMAL WIN SCENARIO
@@ -3464,7 +3480,7 @@ if (!allDone) return advanceToNextPlayer();
   await update(stateRef, { status: stateObj.status + ' ' });
 
   const firstPlayerId = Object.keys(players)[0];
-  await set(stateRef, {
+  await update(stateRef, {
     gameStarted: true,
     currentPlayer: firstPlayerId,
     currentStage: 0,
