@@ -22,6 +22,10 @@
       padding-bottom: 3rem;
       overflow: auto;
     }
+    html, body {
+      overflow-x: hidden;   /* NEW – stop horizontal scroll */
+    }
+
     .lobby {
       background: rgba(255, 255, 255, 0.1);
       padding: 2rem;
@@ -190,6 +194,10 @@
     line-height: 1.5;
     max-width: 600px;
   }
+  .my-turn {
+    box-shadow: 0px 0px 25px -10px gold !important;
+  }
+  
   
   </style>
 
@@ -304,8 +312,10 @@
         <div id="betModifiers" style="margin-top: 10px;"></div>
         <div id="cardUpgradeArea" style="margin-top: 10px;"></div>
       </div>
-      <div id="playerUpgrades" style="width: 100%; margin-top: 2rem; padding: 1rem; background: rgba(255,255,255,0.05); color: #ccc; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.2);">
-        <!-- Populated dynamically -->
+      <div id="playerUpgrades"
+        style="width:100%; box-sizing:border-box; margin-top:2rem; padding:1rem;
+        background:rgba(255,255,255,0.05); color:#ccc; font-size:0.9rem;
+        border-top:1px solid rgba(255,255,255,0.2);">
       </div>
   </div>
 <audio id="turnSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
@@ -1810,6 +1820,14 @@ async function updateGameDOM(state) {
     cardArea.appendChild(cardEl);
   });
 
+  const ui = document.getElementById('gameUI');
+  if (state.currentPlayer === playerId && !soloMode) {
+    ui.classList.add('my-turn');
+  } else {
+    ui.classList.remove('my-turn');
+  }
+
+
   // 4) Rebuild the guess buttons for *your* turn
   const guessArea = document.getElementById('guessButtons');
   guessArea.innerHTML = '';
@@ -2964,7 +2982,7 @@ async function showShopOptions(isWinner) {
 
     "Card Factory": {
       name: "Card Factory",
-      desc: "Instantly create 5 random cards of any suit/value (blue suits allowed if owned)",
+      desc: "Instantly create 5 random cards of any suit/value",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
