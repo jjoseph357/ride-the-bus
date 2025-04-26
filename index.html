@@ -1198,6 +1198,9 @@ async function handleGuess(guess, state) {
   // ─── Stage 3 ────────────────────────────────────────────────────────────────
   if (stage === 3) {
     if (guess === 'Cash Out') {
+      // fetch player data so pdata is defined
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
 
       const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
 
@@ -1212,8 +1215,6 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 3 cash‑out (3×)
-      const psnap = await get(playerRef);
-      const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[2] || multipliers[2];
 
       // 4) Burn “one‑off” card modifiers first
@@ -1334,6 +1335,9 @@ async function handleGuess(guess, state) {
   // ─── Stage 4 ────────────────────────────────────────────────────────────────
   if (stage === 4) {
     if (guess === 'Cash Out') {
+      // fetch player data so pdata is defined
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
 
       const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
 
@@ -1348,8 +1352,6 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 4 cash‑out (4×)
-      const psnap = await get(playerRef);
-      const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[3] || multipliers[3];
 
       // 4) Burn card modifiers
@@ -1468,6 +1470,10 @@ async function handleGuess(guess, state) {
   if (stage === 5) {
     if (guess === 'Cash Out') {
 
+      // fetch player data so pdata is defined
+      const psnap = await get(playerRef);
+      const pdata = psnap.val() || {};
+
       const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
 
       // 1) Remove the first drawn card
@@ -1481,8 +1487,6 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 5 cash‑out (20×)
-      const psnap = await get(playerRef);
-      const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[4] || multipliers[4];
 
       // 4) Burn card modifiers
