@@ -489,6 +489,12 @@ window.addEventListener("DOMContentLoaded", () => {
     let correctGuessCount = 0;
     let guessLock = false;
     const CURSED_LOAN_INC = 0.25;
+    // ─── Token interest helper ──────────────────────────────────────────
+    const MAX_TOKEN_INTEREST = 5;
+    function tokenInterest(tokensHeld) {
+      /* +1 token for every full 5 you already own, to a max of +5 */
+      return Math.min(Math.floor(tokensHeld / 5), MAX_TOKEN_INTEREST);
+    }
 
 
     
@@ -2088,7 +2094,11 @@ async function showShopOptions(isWinner) {
   const shop        = document.getElementById('shopSection');
   shop.classList.remove('hidden');
   const tokenDisplay = document.getElementById('playerTokens');
-  tokenDisplay.textContent = `Tokens: ${playerData.purchaseTokens || 0}`;
+  tokenDisplay.innerHTML =
+    `Tokens: <strong>${playerData.purchaseTokens || 0}</strong>` +
+    `<br><span style="font-size:0.8rem; opacity:0.8;">` +
+    `💡 Every 5 tokens you're holding earns +1 extra at round&nbsp;end &nbsp;(max&nbsp;+5)` +
+    `</span>`;
 
   // ▶️ Reshuffle button (1 token)
   let reshuffleBtn = document.getElementById('reshuffleShopBtn');
@@ -2191,8 +2201,8 @@ async function showShopOptions(isWinner) {
 
         // 1) how many times you've already bought it
         const count = data.bonusBetsCount || 0;
-        // 2) cost = 2 + 2×count
-        const cost  = 2 + (count * 2);
+        // 2) cost = 3 + 2×count
+        const cost  = 3 + (count * 2);
         const tokens = data.purchaseTokens || 0;
         if (tokens < cost) {
           return alert(`You need ${cost} tokens to buy Bonus Bets.`);
@@ -2225,7 +2235,7 @@ async function showShopOptions(isWinner) {
         const snap = await get(playerRef);
         const data = snap.val();
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("You don't have enough tokens.");
+        if (tokens < 3) return alert("You don't have enough tokens.");
         const oldMultipliers = data.multipliers || { 1: 2, 2: 3, 3: 4, 4: 20, 5: 500 };
         const newMultipliers = {};
         for (const [stage, mult] of Object.entries(oldMultipliers)) {
@@ -2241,10 +2251,10 @@ async function showShopOptions(isWinner) {
         await update(playerRef, {
           multipliers: newMultipliers,
           betModifierBonus: currentBonus - 2,
-          purchaseTokens: tokens - 2,
+          purchaseTokens: tokens - 3,
           modifierHistory: history
         });
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
         displayMultipliers();
       }
     },
@@ -2259,7 +2269,7 @@ async function showShopOptions(isWinner) {
         if (data.allInBonus) {
           return alert("⚠️ You already have Hail Mary and cannot purchase it again.");
         }
-        if (tokens < 2) {
+        if (tokens < 3) {
           return alert("You don't have enough tokens.");
         }
 
@@ -2268,13 +2278,13 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           allInBonus:      true,
-          purchaseTokens:  tokens - 2,
+          purchaseTokens:  tokens - 3,
           modifierHistory: history
         });
 
         alert("🎉 Hail Mary unlocked! If you go all-in, your multiplier will be doubled.");
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 2}`;
+                .textContent = `Tokens: ${tokens - 3}`;
       }
     },
 
@@ -2293,10 +2303,10 @@ async function showShopOptions(isWinner) {
 
         // 2️⃣ token check
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         // 3️⃣ deduct token & flag
-        const newTokens = tokens - 1;
+        const newTokens = tokens - 2;
         await update(playerRef, {
           addBlueSuits: true,
           purchaseTokens: newTokens
@@ -2355,7 +2365,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        if (tokens < 4) return alert("You need 4 tokens to buy this.");   
         // Build your deck, filter for clubs, pick 2 at random
         let clubCards = buildPlayerDeck(data).filter(c => c.suit === '♣');
         const toRemove = [];
@@ -2370,11 +2380,11 @@ async function showShopOptions(isWinner) {
         history.push(`Removed 2 clubs: ${toRemove.join(', ')}`);    
         await update(playerRef, {
           cardUpgrades:     upgrades,
-          purchaseTokens:   tokens - 3,
+          purchaseTokens:   tokens - 4,
           modifierHistory:  history
         });
         alert(`🗑️ Removed 2 clubs: ${toRemove.join(', ')}`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
       }
     },    
     "Remove 2 Spades": {
@@ -2384,7 +2394,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        if (tokens < 4) return alert("You need 4 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♠');
         const toRemove = [];
         for (let i = 0; i < 2 && pool.length; i++) {
@@ -2397,11 +2407,11 @@ async function showShopOptions(isWinner) {
         history.push(`Removed 2 spades: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
-          purchaseTokens:   tokens - 3,
+          purchaseTokens:   tokens - 4,
           modifierHistory:  history
         });
         alert(`🗑️ Removed 2 spades: ${toRemove.join(', ')}`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
       }
     },    
     "Remove 2 Hearts": {
@@ -2411,7 +2421,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        if (tokens < 4) return alert("You need 4 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♥');
         const toRemove = [];
         for (let i = 0; i < 2 && pool.length; i++) {
@@ -2424,11 +2434,11 @@ async function showShopOptions(isWinner) {
         history.push(`Removed 2 hearts: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
-          purchaseTokens:   tokens - 3,
+          purchaseTokens:   tokens - 4,
           modifierHistory:  history
         });
         alert(`🗑️ Removed 2 hearts: ${toRemove.join(', ')}`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
       }
     },    
     "Remove 2 Diamonds": {
@@ -2438,7 +2448,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 3) return alert("You need 3 tokens to buy this.");   
+        if (tokens < 4) return alert("You need 4 tokens to buy this.");   
         let pool = buildPlayerDeck(data).filter(c => c.suit === '♦');
         const toRemove = [];
         for (let i = 0; i < 2 && pool.length; i++) {
@@ -2451,11 +2461,11 @@ async function showShopOptions(isWinner) {
         history.push(`Removed 2 diamonds: ${toRemove.join(', ')}`);   
         await update(playerRef, {
           cardUpgrades:     upgrades,
-          purchaseTokens:   tokens - 3,
+          purchaseTokens:   tokens - 4,
           modifierHistory:  history
         });
         alert(`🗑️ Removed 2 diamonds: ${toRemove.join(', ')}`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
       }
     },
 
@@ -2467,13 +2477,13 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         // bump the count
         const newCount = (data.remove2to4Count || 0) + 1;
         await update(playerRef, {
           remove2to4Count:   newCount,
-          purchaseTokens:    tokens - 1,
+          purchaseTokens:    tokens - 2,
           modifierHistory: [
             ...(data.modifierHistory || []),
             `Remove 2-4 x${newCount}`
@@ -2481,7 +2491,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert(`🚫 Cards 2, 3 & 4 will now be removed from your draws (purchased ${newCount}x).`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Snow-baller": {
@@ -2492,12 +2502,12 @@ async function showShopOptions(isWinner) {
         const data = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
         if (data.snowballer) return alert("⚠️ You already have Snow-baller.");
-        if (tokens <= 0)       return alert("Not enough tokens.");
+        if (tokens < 2)       return alert("Not enough tokens.");
 
         // mark as owned
         await update(playerRef, {
           snowballer: true,
-          purchaseTokens: tokens - 1
+          purchaseTokens: tokens - 2
         });
 
         // record history
@@ -2506,7 +2516,7 @@ async function showShopOptions(isWinner) {
         await update(playerRef, { modifierHistory: history });
 
         alert("❄️ Snow-baller unlocked! Your next bet's multiplier will be multiplier + (bet / balance).");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Ace & Two": {
@@ -2515,12 +2525,12 @@ async function showShopOptions(isWinner) {
       apply: async () => {
         const data   = (await get(playerRef)).val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         const newCount = (data.aceTwoBoostCount || 0) + 1;
         await update(playerRef, {
           aceTwoBoostCount: newCount,
-          purchaseTokens:   tokens - 1,
+          purchaseTokens:   tokens - 2,
           modifierHistory: [
             ...(data.modifierHistory || []),
             `Ace & Two x${newCount}`
@@ -2528,7 +2538,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert(`🎉 Ace & Two purchased! You now get +${newCount} Aces & 2s per suit.`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Faceless": {
@@ -2537,12 +2547,12 @@ async function showShopOptions(isWinner) {
       apply: async () => {
         const data   = (await get(playerRef)).val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         const newCount = (data.facelessCount || 0) + 1;
         await update(playerRef, {
           facelessCount:   newCount,
-          purchaseTokens:  tokens - 1,
+          purchaseTokens:  tokens - 2,
           modifierHistory: [
             ...(data.modifierHistory || []),
             `Faceless x${newCount}`
@@ -2550,7 +2560,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert(`🆓 Faceless purchased! J/Q/K will be removed from your draws.`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Quick Start": {
@@ -2560,7 +2570,7 @@ async function showShopOptions(isWinner) {
       const snap   = await get(playerRef);
       const data   = snap.val() || {};
       const count  = data.quickStartCount || 0;
-      const cost   = 2 + count;                     // base 2, +1 per prior purchase
+      const cost   = 3 + count;                     // base 3, +1 per prior purchase
       const tokens = data.purchaseTokens || 0;
       if (tokens < cost) {
           return alert(`🛑 You need ${cost} tokens to buy Quick Start.`);
@@ -2598,7 +2608,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 1) return alert("🛑 You need 1 token to buy Humble Beginnings.");
+        if (tokens < 2) return alert("🛑 You need 2 tokens to buy Humble Beginnings.");
 
         const ops = data.startBalanceOps || [];
         ops.push({ type: 'mult', value: 0.5 });
@@ -2616,12 +2626,12 @@ async function showShopOptions(isWinner) {
         await update(playerRef, {
           startBalanceOps:  ops,
           multipliers:      boostedMults,
-          purchaseTokens:   tokens - 1,
+          purchaseTokens:   tokens - 2,
           modifierHistory:  history
         });
 
         alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
         displayMultipliers();
       }
     },
@@ -2633,7 +2643,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         // stack count
         const newCount = (data.clutchKingCount || 0) + 1;
@@ -2645,13 +2655,13 @@ async function showShopOptions(isWinner) {
         // persist
         await update(playerRef, {
           clutchKingCount:  newCount,
-          purchaseTokens:   tokens - 1,
+          purchaseTokens:   tokens - 2,
           modifierHistory:  history
         });
 
         alert(`🏆 Clutch King purchased! On late bets you now get +${newCount} to your multiplier.`);
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 1}`;
+                .textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Summon Kings": {
@@ -2662,7 +2672,7 @@ async function showShopOptions(isWinner) {
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
 
-        if (tokens < 1) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
 
         const suits = ['♠', '♥', '♦', '♣'];
         if (data.addBlueSuits) suits.push('☾', '★');
@@ -2679,12 +2689,12 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           duplicateCounts: dupCounts,
-          purchaseTokens: tokens - 1,
+          purchaseTokens: tokens - 2,
           modifierHistory: history
         });
 
         alert("🃏 You summoned the Kings! One King of each suit has been added to your deck.");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
 
@@ -2695,18 +2705,18 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens <= 0) return alert("You don't have enough tokens.");
+        if (tokens < 2) return alert("You don't have enough tokens.");
         // stack one more Kingpin
         const newCount = (data.kingpinCount || 0) + 1;
         const history  = data.modifierHistory || [];
         history.push(`Kingpin x${newCount}`);
         await update(playerRef, {
           kingpinCount:      newCount,
-          purchaseTokens:    tokens - 1,
+          purchaseTokens:    tokens - 2,
           modifierHistory:   history
         });
         alert(`🃏 Kingpin purchased! From now on, each King drawn gives you +0.1 to your multiplier.`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
       }
     },
     "Stage 1 Fright": {
@@ -2719,20 +2729,20 @@ async function showShopOptions(isWinner) {
 
         if (data.stage1Fright) return alert("⚠️ You already have Stage 1 Fright and cannot purchase it again.");
 
-        if (tokens < 3) return alert("You don't have enough tokens.");
+        if (tokens < 4) return alert("You don't have enough tokens.");
 
         const history = data.modifierHistory || [];
         history.push("Stage 1 Fright purchased: next Stage 1 fail → +1 bet, lose 3x on next bet (max 3 times)");
 
         await update(playerRef, {
-          purchaseTokens: tokens - 3,
+          purchaseTokens: tokens - 4,
           modifierHistory: history,
           stage1Fright: true    // flag that you own it
         });
 
         alert("Stage 1 Fright unlocked! If you fail Stage 1, you'll get +1 bet but your next Cash Out multiplier is reduced by 3x (max 3 times).");
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 3}`;
+                .textContent = `Tokens: ${tokens - 4}`;
       }
     },
     "Witch's Cauldron": {
@@ -2742,7 +2752,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("You don't have enough tokens.");
+        if (tokens < 3) return alert("You don't have enough tokens.");
 
         const fullDeck = buildPlayerDeck(data);
         const shuffled = [...fullDeck].sort(() => Math.random() - 0.5);
@@ -2770,7 +2780,7 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           witchCauldronMap: mergedMap,
-          purchaseTokens: tokens - 2,
+          purchaseTokens: tokens - 3,
           modifierHistory: [
             ...(data.modifierHistory || []),
             `Witch's Cauldron: 7 cards now act as ${sharedValue} of ${sharedSuit}`
@@ -2778,7 +2788,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert("🧪 Witch's Cauldron is bubbling! Those 7 cards now share the same number.");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },
     "Cursed Loan": {
@@ -2791,12 +2801,12 @@ async function showShopOptions(isWinner) {
 
         if (data.cursedLoan) return alert("💀 You already have Cursed Loan and cannot purchase it again.");
 
-        if (tokens < 3) return alert("You don't have enough tokens.");
+        if (tokens < 4) return alert("You don't have enough tokens.");
 
         // Mark the player as cursed
         await update(playerRef, {
           cursedLoan: true,
-          purchaseTokens: tokens - 3,
+          purchaseTokens: tokens - 4,
           modifierHistory: [
             ...(data.modifierHistory || []),
             "Cursed Loan: -20% balance at start, +0.25 multiplier on cash out"
@@ -2804,7 +2814,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert("💀 You've taken the Cursed Loan! Each turn will cost you 20%, but your multipliers will grow.");
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 4}`;
 
       }
     },
@@ -2818,7 +2828,7 @@ async function showShopOptions(isWinner) {
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
         const count  = data.bonusInterestCount  || 0;
-        const cost   = count + 1;
+        const cost   = count + 2;
 
         if (tokens < cost) {
           return alert(`You need ${cost} tokens to buy this.`);
@@ -2852,7 +2862,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 2) return alert("You don't have enough tokens.");
+        if (tokens < 3) return alert("You don't have enough tokens.");
 
         const newCount = (data.remove7and8Count || 0) + 1;
         const history  = data.modifierHistory || [];
@@ -2860,12 +2870,12 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           remove7and8Count:   newCount,
-          purchaseTokens:     tokens - 2,
+          purchaseTokens:     tokens - 3,
           modifierHistory:    history
         });
 
         alert(`🚫 All 7s and 8s will now be skipped in your draws (purchased ${newCount}x).`);
-        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
       }
     },
     "Power Rush": {
@@ -2875,7 +2885,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 3) return alert("You don't have enough tokens.");
+        if (tokens < 4) return alert("You don't have enough tokens.");
 
         // Increment or initialize the rounds‑left counter
         const newRounds = (data.powerRushRoundsLeft || 0) + 3;
@@ -2884,13 +2894,13 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           powerRushRoundsLeft: newRounds,
-          purchaseTokens:      tokens - 3,
+          purchaseTokens:      tokens - 4,
           modifierHistory:     history
         });
 
         alert(`🔥 Power Rush! +3 multipliers for the next ${newRounds} rounds.`);
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 3}`;
+                .textContent = `Tokens: ${tokens - 4}`;
         displayMultipliers();
       }
     },
@@ -2903,11 +2913,11 @@ async function showShopOptions(isWinner) {
         const tokens = data.purchaseTokens || 0;
 
         if (data.hasDecay)  return alert("You already own Decay.");
-        if (tokens < 3)     return alert("You need 3 tokens to buy Decay.");
+        if (tokens < 4)     return alert("You need 4 tokens to buy Decay.");
 
         await update(playerRef, {
           hasDecay: true,                           // flag so we know you own it
-          purchaseTokens: tokens - 3,
+          purchaseTokens: tokens - 4,
           modifierHistory: [
             ...(data.modifierHistory || []),
             "Decay: delete 1 card & +0.5 random mult each round"
@@ -2915,7 +2925,7 @@ async function showShopOptions(isWinner) {
         });
 
         alert("☠️  Decay acquired! One card will rot away every round…");
-        document.getElementById("playerTokens").textContent = `Tokens: ${tokens - 3}`;
+        document.getElementById("playerTokens").textContent = `Tokens: ${tokens - 4}`;
       }
     },
 
@@ -2926,7 +2936,7 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        const cost   = 2;                         // match the cost you set above
+        const cost   = 3;                         // match the cost you set above
 
         if (tokens < cost) return alert("You don't have enough tokens.");
 
@@ -2981,7 +2991,7 @@ async function showShopOptions(isWinner) {
           const data   = snap.val() || {};
           const tokens = data.purchaseTokens || 0;
           const already = data[countKey] || 0;
-          const cost    = already + 1;
+          const cost    = already + 2;
 
           if (tokens < cost) return alert(`You need ${cost} tokens to buy this.`);
 
@@ -3001,7 +3011,7 @@ async function showShopOptions(isWinner) {
           });
 
           alert(`Stage ${stage} multiplier increased by +${stage} (now ${newMult[stage]}x)!`);
-          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
+          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - cost}`;
           displayMultipliers();
         }
       };
@@ -3024,7 +3034,7 @@ async function showShopOptions(isWinner) {
             return alert(`⚠️ You already have Stage ${stage} Shield.`);
           }
 
-          if (tokens < 2) return alert("You don't have enough tokens.");
+          if (tokens < 3) return alert("You don't have enough tokens.");
 
           const shields = data.shields || {};
           shields[stage] = 25; // percent
@@ -3036,10 +3046,10 @@ async function showShopOptions(isWinner) {
 
           await update(playerRef, {
             shields,
-            purchaseTokens: tokens - 2,
+            purchaseTokens: tokens - 3,
             modifierHistory: history
           });
-          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
+          document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 3}`;
 
         }
       }];
@@ -3062,19 +3072,19 @@ async function showShopOptions(isWinner) {
     box.className = 'shop-item';
 
     // calculate cost:
-    let cost = 1; 
+    let cost = 2; 
     // if (name === "Remove Diamonds & Clubs") cost = 4;
     if (name === "Quick Start") {
        const count = playerData.quickStartCount || 0;
-       cost = count + 2;
+       cost = count + 3;
      }
     if (name === "Bonus Bets") {
       const count = playerData.bonusBetsCount || 0;
-      cost = 2 + (count * 2);
+      cost = 3 + (count * 2);
     }
     if (name === "Bonus Interest") {
       const count = playerData.bonusInterestCount || 0;
-      cost = count + 1;
+      cost = count + 2;
     }
     if ([
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
@@ -3082,13 +3092,13 @@ async function showShopOptions(isWinner) {
       "Hail Mary","Two-edged", "Super Multiplier",
       "Witch's Cauldron", "Card Factory"
     ].includes(name)) {
-      cost = 2;
+      cost = 3;
     }
     if ([
       "Stage 1 Fright", "Cursed Loan", "Remove 2 Clubs", "Remove 2 Spades",
       "Remove 2 Hearts", "Remove 2 Diamonds", "Power Rush", "Decay",
     ].includes(name)) {
-      cost = 3;
+      cost = 4;
     }
 
     // compute dynamic desc for Stage 1 Boost
@@ -3097,7 +3107,7 @@ async function showShopOptions(isWinner) {
     if (boostMatch) {
       const stg  = boostMatch[1];
       const prev = playerData[`stage${stg}BoostCount`] || 0;
-      cost = prev + 1;
+      cost = prev + 2;
       desc = `Increase Stage ${stg} multiplier by +${stg}`;
     }
 
@@ -3161,7 +3171,8 @@ async function showShopOptions(isWinner) {
   // Render the Card Upgrade shop
   const cardDiv = document.getElementById('cardUpgradeArea');
   cardDiv.innerHTML =
-    '<div style="width:100%; text-align:center; font-weight:bold; margin-bottom:0.5rem;">Card Upgrade</div>';
+    '<div style="width:100%;text-align:center;font-weight:bold;margin-bottom:0.5rem;">' +
+    'Card Upgrade <em>(cost 2 tokens)</em></div>';
 
 
   const upgradeFlex = document.createElement('div');
@@ -3199,8 +3210,12 @@ async function showShopOptions(isWinner) {
     box.appendChild(desc);
 
     // Purchase button
+    const UPGRADE_COST = 2;                     // new
+
     const btn = document.createElement('button');
-    btn.textContent = 'Upgrade';
+    btn.textContent = 'Upgrade (Cost: ' + UPGRADE_COST +')';
+    btn.disabled    = (playerData.purchaseTokens || 0) < UPGRADE_COST;
+
     if ((playerData.purchaseTokens || 0) <= 0) btn.disabled = true;
 
     btn.onclick = async () => {
@@ -3208,7 +3223,7 @@ async function showShopOptions(isWinner) {
       const snap   = await get(playerRef);
       const latest = snap.val() || {};
       const tokens = latest.purchaseTokens || 0;
-      if (tokens <= 0) return alert("You don't have any tokens left!");
+      if (tokens < UPGRADE_COST) return alert("You need 2 tokens for a card upgrade.");
 
       // 2️⃣ Map effect‐codes → human descriptions
       const mapDesc = {
@@ -3245,10 +3260,14 @@ async function showShopOptions(isWinner) {
       }
 
       // 5️⃣ Apply the new effect
+      const prevUpgrade = (latest.cardUpgrades || []).find(u => u.text === upgradeCard.text);
+
       if (effectText === 'duplicate_card') {
         const newCount = (dupCounts[upgradeCard.text] || 0) + 1;
         dupCounts[upgradeCard.text] = newCount;
         history.push(`Duplicate ${upgradeCard.text} (x${newCount})`);
+
+        if (prevUpgrade) cardUpgrades.push(prevUpgrade);
 
         // Also preserve any existing upgrade on this card
         const existingUpgrade = (latest.cardUpgrades || []).find(u => u.text === upgradeCard.text);
@@ -3264,7 +3283,7 @@ async function showShopOptions(isWinner) {
 
       // 6️⃣ Build update payload
       const updates = {
-        purchaseTokens:   tokens - 1,
+        purchaseTokens:   tokens - UPGRADE_COST,
         modifierHistory:  history,
         duplicateCounts:  dupCounts,
         cardUpgrades
@@ -3274,8 +3293,9 @@ async function showShopOptions(isWinner) {
       await update(playerRef, updates);
       btn.disabled = true;
       btn.textContent = oldIdx === -1 ? 'Upgraded' : 'Replaced';
-      document.getElementById('playerTokens')
-              .textContent = `Tokens: ${tokens - 1}`;
+      document.getElementById('playerTokens').textContent =
+        `Tokens: ${tokens - UPGRADE_COST}`;
+
 
     };
 
@@ -3465,7 +3485,10 @@ async function grantTokenAndShowShop(winners) {
 
   for (const [id, data] of Object.entries(players)) {
     const isWinner = winners.some(([winnerId]) => winnerId === id);
-    const newTokens = (data.purchaseTokens || 0) + 2;
+    const oldTokens = data.purchaseTokens || 0;   // what the player had
+    const baseEarn  = 3;                          // flat round-reward
+    const bonus     = tokenInterest(oldTokens);   // new interest
+    const newTokens = oldTokens + baseEarn + bonus;
 
     const upgradeCard = getRandomCardFromDeck();
     const possibleEffects = [
