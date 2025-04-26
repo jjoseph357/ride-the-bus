@@ -1059,6 +1059,8 @@ async function handleGuess(guess, state) {
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
 
+      const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
+
       // remove first card then compute payout
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
@@ -1142,7 +1144,7 @@ async function handleGuess(guess, state) {
       await endTurn(`Cashed out $${payout}`, payout);
 
       /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
-      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+      if (hadKing) {
         const inc      = 0.1 * pdata.kingpinCount;          // stackable
         const oldMults = pdata.multipliers || {};
         const newMults = {};
@@ -1195,6 +1197,9 @@ async function handleGuess(guess, state) {
   // ─── Stage 3 ────────────────────────────────────────────────────────────────
   if (stage === 3) {
     if (guess === 'Cash Out') {
+
+      const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
+
       // 1) Remove the first drawn card
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
@@ -1274,7 +1279,7 @@ async function handleGuess(guess, state) {
       await endTurn(`Cashed out $${payout}`, payout);
 
       /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
-      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+      if (hadKing) {
         const inc      = 0.1 * pdata.kingpinCount;          // stackable
         const oldMults = pdata.multipliers || {};
         const newMults = {};
@@ -1327,6 +1332,9 @@ async function handleGuess(guess, state) {
   // ─── Stage 4 ────────────────────────────────────────────────────────────────
   if (stage === 4) {
     if (guess === 'Cash Out') {
+
+      const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
+
       // 1) Remove the first drawn card
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
@@ -1406,7 +1414,7 @@ async function handleGuess(guess, state) {
       await endTurn(`Cashed out $${payout}`, payout);
 
       /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
-      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+      if (hadKing) {
         const inc      = 0.1 * pdata.kingpinCount;          // stackable
         const oldMults = pdata.multipliers || {};
         const newMults = {};
@@ -1456,6 +1464,9 @@ async function handleGuess(guess, state) {
   // ─── Stage 5 ────────────────────────────────────────────────────────────────
   if (stage === 5) {
     if (guess === 'Cash Out') {
+
+      const hadKing = pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13);
+
       // 1) Remove the first drawn card
       const deckSnap = await get(deckRef);
       let deck = deckSnap.val() || [];
@@ -1535,7 +1546,7 @@ async function handleGuess(guess, state) {
       await endTurn(`Cashed out $${payout}`, payout);
 
       /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
-      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+      if (hadKing) {
         const inc      = 0.1 * pdata.kingpinCount;          // stackable
         const oldMults = pdata.multipliers || {};
         const newMults = {};
