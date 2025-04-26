@@ -1166,6 +1166,7 @@ async function handleGuess(guess, state) {
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+        displayMultipliers();
       }
 
       return;
@@ -1301,6 +1302,7 @@ async function handleGuess(guess, state) {
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+        displayMultipliers();
       }
 
       return;
@@ -1436,6 +1438,7 @@ async function handleGuess(guess, state) {
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+        displayMultipliers();
       }
 
       return;
@@ -1568,6 +1571,7 @@ async function handleGuess(guess, state) {
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
+        displayMultipliers();
       }
 
       return;
