@@ -1,4 +1,5 @@
 
+
 <!-- Author: Joseph E. -->
 <!-- Username: jjoseph357 -->
 
@@ -218,7 +219,7 @@
       </label><br/>
       <label style="color:#fff;">
         <input type="checkbox" id="toggleLoan" />
-        Cursed Loan Alerts
+        Cursed Loan Alerts
       </label><br/><br/>
       <button id="saveSettings" style="padding:0.5rem 1rem;">Save</button>
     </div>
@@ -487,6 +488,8 @@ window.addEventListener("DOMContentLoaded", () => {
     let maxBetsPerPlayer = 10;
     let correctGuessCount = 0;
     let guessLock = false;
+    const CURSED_LOAN_INC = 0.25;
+
 
     
     function generateLobbyCode() {
@@ -759,25 +762,6 @@ async function applyCardUpgradeBonus(card) {
   const snap = await get(playerRef);
   const playerData = snap.val();
   const match = (playerData.cardUpgrades || []).find(up => up.text === card.text);
-  
-  // ─── Kingpin support ─────────────────────────────────────────
-  if (playerData.kingpinCount > 0 && card.value === 13) {
-    // bump **all** stages by kingpinCount
-    const oldMults = playerData.multipliers || {};
-    const newMults = {};
-
-    // for each stage key, add the stack count
-    for (const [stage, m] of Object.entries(oldMults)) {
-      newMults[stage] = m + playerData.kingpinCount;
-    }
-
-    await update(playerRef, { multipliers: newMults });
-    console.log(
-      `Kingpin: boosted all multipliers by ${playerData.kingpinCount} (now ${JSON.stringify(newMults)})`
-    );
-    displayMultipliers()
-
-  }
 
 
   if (!match) return;
@@ -826,12 +810,12 @@ async function applyCardUpgradeBonus(card) {
   }
   // ─── new: one‐time 1.25× boost for any cash‑out this round ─────────────────
   if (match.effect === '1.25x Mult') {
-    // mark that future Cash Outs this round get +25%
+    // mark that future Cash Outs this round get +25%
     await update(playerRef, { bonusMult1_25Active: true });
     console.log(`1.25x card drawn: next cash-out this bet will be boosted`);
   }
   
-  displayMultipliers()
+  displayMultipliers();
 }
 
 function createCardDisplay(card, effect = null) {
@@ -1038,7 +1022,7 @@ async function handleGuess(guess, state) {
       await emitSuccess();
     } else {
       await emitFailure();
-      // before ending turn, check for Stage 1 Fright
+      // before ending turn, check for Stage 1 Fright
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       if (pdata.stage1Fright) {
@@ -1100,7 +1084,7 @@ async function handleGuess(guess, state) {
       }
 
       // (If you had any other “once‑per‑draw” flags, handle them here…)
-      // ─── Power Rush support ─────────────────────────────────────
+      // ─── Power Rush support ─────────────────────────────────────
       if (pdata.powerRushRoundsLeft > 0) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
@@ -1157,11 +1141,26 @@ async function handleGuess(guess, state) {
       // 💰 Update balance and end turn
       await endTurn(`Cashed out $${payout}`, payout);
 
+      /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
+      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+        const inc      = 0.1 * pdata.kingpinCount;          // stackable
+        const oldMults = pdata.multipliers || {};
+        const newMults = {};
+
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = +(m + inc).toFixed(2);           // keep it tidy
+        }
+
+        await update(playerRef, { multipliers: newMults });
+        console.log(`👑 Kingpin: cashed a King → +${inc.toFixed(2)} on every stage`);
+        displayMultipliers();
+      }
+
       // 💀 Cursed Loan logic (apply AFTER payout)
       if (pdata.cursedLoan) {
-        const stageNum = 1;
+        const stageNum = 2;
         const oldMults = pdata.multipliers || {};
-        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + CURSED_LOAN_INC;
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
@@ -1182,7 +1181,7 @@ async function handleGuess(guess, state) {
     if ((guess === 'Higher' && curr > prevValue) ||
         (guess === 'Lower'  && curr < prevValue)) {
       state.currentStage = 3;
-      state.status       = 'Correct! Cash out 3× or pick In-Between/Outside';
+      state.status       = 'Correct! Cash out 3x or pick In-Between/Outside';
       await update(stateRef, state);
       await emitSuccess();
     } else {
@@ -1206,7 +1205,7 @@ async function handleGuess(guess, state) {
       state.drawnCards = [];
       await update(stateRef, state);
 
-      // 3) Base multiplier for Stage 3 cash‑out (3×)
+      // 3) Base multiplier for Stage 3 cash‑out (3×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[2] || multipliers[2];
@@ -1221,7 +1220,7 @@ async function handleGuess(guess, state) {
         await update(playerRef, { bonusMult1_25Active: false });
       }
 
-      // ─── Power Rush support ─────────────────────────────────────
+      // ─── Power Rush support ─────────────────────────────────────
       if (pdata.powerRushRoundsLeft > 0) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
@@ -1274,11 +1273,26 @@ async function handleGuess(guess, state) {
       // 💰 Update balance and end turn
       await endTurn(`Cashed out $${payout}`, payout);
 
+      /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
+      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+        const inc      = 0.1 * pdata.kingpinCount;          // stackable
+        const oldMults = pdata.multipliers || {};
+        const newMults = {};
+
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = +(m + inc).toFixed(2);           // keep it tidy
+        }
+
+        await update(playerRef, { multipliers: newMults });
+        console.log(`👑 Kingpin: cashed a King → +${inc.toFixed(2)} on every stage`);
+        displayMultipliers();
+      }
+
       // 💀 Cursed Loan logic (apply AFTER payout)
       if (pdata.cursedLoan) {
         const stageNum = 3;
         const oldMults = pdata.multipliers || {};
-        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + CURSED_LOAN_INC ;
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
@@ -1299,7 +1313,7 @@ async function handleGuess(guess, state) {
     if ((guess === 'In-Between' && inBetween) ||
         (guess === 'Outside'    && !inBetween)) {
       state.currentStage = 4;
-      state.status       = 'Correct! Cash out 4× or pick Suit';
+      state.status       = 'Correct! Cash out 4x or pick Suit';
       await update(stateRef, state);
       await emitSuccess();
     } else {
@@ -1323,7 +1337,7 @@ async function handleGuess(guess, state) {
       state.drawnCards = [];
       await update(stateRef, state);
 
-      // 3) Base multiplier for Stage 4 cash‑out (4×)
+      // 3) Base multiplier for Stage 4 cash‑out (4×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[3] || multipliers[3];
@@ -1338,7 +1352,7 @@ async function handleGuess(guess, state) {
         await update(playerRef, { bonusMult1_25Active: false });
       }
 
-      // ─── Power Rush support ─────────────────────────────────────
+      // ─── Power Rush support ─────────────────────────────────────
       if (pdata.powerRushRoundsLeft > 0) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
@@ -1391,11 +1405,26 @@ async function handleGuess(guess, state) {
       // 💰 Update balance and end turn
       await endTurn(`Cashed out $${payout}`, payout);
 
+      /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
+      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+        const inc      = 0.1 * pdata.kingpinCount;          // stackable
+        const oldMults = pdata.multipliers || {};
+        const newMults = {};
+
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = +(m + inc).toFixed(2);           // keep it tidy
+        }
+
+        await update(playerRef, { multipliers: newMults });
+        console.log(`👑 Kingpin: cashed a King → +${inc.toFixed(2)} on every stage`);
+        displayMultipliers();
+      }
+
       // 💀 Cursed Loan logic (apply AFTER payout)
       if (pdata.cursedLoan) {
         const stageNum = 4;
         const oldMults = pdata.multipliers || {};
-        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + CURSED_LOAN_INC ;
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
@@ -1437,7 +1466,7 @@ async function handleGuess(guess, state) {
       state.drawnCards = [];
       await update(stateRef, state);
 
-      // 3) Base multiplier for Stage 5 cash‑out (20×)
+      // 3) Base multiplier for Stage 5 cash‑out (20×)
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       let multiplier = pdata.multipliers?.[4] || multipliers[4];
@@ -1452,7 +1481,7 @@ async function handleGuess(guess, state) {
         await update(playerRef, { bonusMult1_25Active: false });
       }
 
-      // ─── Power Rush support ─────────────────────────────────────
+      // ─── Power Rush support ─────────────────────────────────────
       if (pdata.powerRushRoundsLeft > 0) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
@@ -1505,11 +1534,26 @@ async function handleGuess(guess, state) {
       // 💰 Update balance and end turn
       await endTurn(`Cashed out $${payout}`, payout);
 
+      /* ── Kingpin: +0.1 on cash-out if a King was part of the hand ── */
+      if (pdata.kingpinCount > 0 && state.drawnCards.some(c => c.value === 13)) {
+        const inc      = 0.1 * pdata.kingpinCount;          // stackable
+        const oldMults = pdata.multipliers || {};
+        const newMults = {};
+
+        for (const [stage, m] of Object.entries(oldMults)) {
+          newMults[stage] = +(m + inc).toFixed(2);           // keep it tidy
+        }
+
+        await update(playerRef, { multipliers: newMults });
+        console.log(`👑 Kingpin: cashed a King → +${inc.toFixed(2)} on every stage`);
+        displayMultipliers();
+      }
+
       // 💀 Cursed Loan logic (apply AFTER payout)
       if (pdata.cursedLoan) {
         const stageNum = 5;
         const oldMults = pdata.multipliers || {};
-        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + CURSED_LOAN_INC ;
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
@@ -1555,7 +1599,7 @@ async function handleGuess(guess, state) {
       if (pdata.cursedLoan) {
         const stageNum = 2;
         const oldMults = pdata.multipliers || {};
-        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + 1;
+        const boosted = (oldMults[stageNum] || multipliers[stageNum]) + CURSED_LOAN_INC ;
         const newMults = { ...oldMults, [stageNum]: boosted };
         await update(playerRef, { multipliers: newMults });
         console.log(`💀 Cursed Loan: Stage ${stageNum} multiplier increased to ${boosted}x`);
@@ -2058,7 +2102,7 @@ async function showShopOptions(isWinner) {
       "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
       "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
       "Cursed Loan","Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
-      "Power Rush"
+      "Power Rush", "Decay", "Card Factory",
     ];
 
     // 2) Build a fresh card upgrade offer
@@ -2182,7 +2226,7 @@ async function showShopOptions(isWinner) {
           modifierHistory: history
         });
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 2}`;
-        displayMultipliers()
+        displayMultipliers();
       }
     },
     "Hail Mary": {
@@ -2258,7 +2302,7 @@ async function showShopOptions(isWinner) {
 
         alert("🎉 You've unlocked the Blue Suits and your multipliers are now 2x higher!");
         document.getElementById('playerTokens').textContent = `Tokens: ${newTokens}`;
-        displayMultipliers()
+        displayMultipliers();
       }
     },
     // "Remove Diamonds & Clubs": {
@@ -2559,7 +2603,7 @@ async function showShopOptions(isWinner) {
 
         alert("🌱 Humble Beginnings purchased! Next round's start will be halved.");
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
-        displayMultipliers()
+        displayMultipliers();
       }
     },
 
@@ -2627,7 +2671,7 @@ async function showShopOptions(isWinner) {
 
     "Kingpin": {
       name: "Kingpin",
-      desc: "Whenever a King appears, increase your win multiplier by 1 (stackable)",
+      desc: "Whenever you cash-out a King, permanently add +0.1 to all multipliers (stackable)",
       apply: async () => {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
@@ -2642,7 +2686,7 @@ async function showShopOptions(isWinner) {
           purchaseTokens:    tokens - 1,
           modifierHistory:   history
         });
-        alert(`🃏 Kingpin purchased! From now on, each King drawn gives you +1 this round's multiplier.`);
+        alert(`🃏 Kingpin purchased! From now on, each King drawn gives you +0.1 to your multiplier.`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
       }
     },
@@ -2720,7 +2764,7 @@ async function showShopOptions(isWinner) {
     },
     "Cursed Loan": {
       name: "Cursed Loan",
-      desc: "Start of turn: lose 20% of your balance. Cash out: +1 multiplier for next stage (permanent)",
+      desc: "Start of turn: lose 20% of your balance. Cash out: +0.25 multiplier for next stage (permanent)",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val() || {};
@@ -2736,7 +2780,7 @@ async function showShopOptions(isWinner) {
           purchaseTokens: tokens - 3,
           modifierHistory: [
             ...(data.modifierHistory || []),
-            "Cursed Loan: -20% balance at start, +1 multiplier on cash out"
+            "Cursed Loan: -20% balance at start, +0.25 multiplier on cash out"
           ]
         });
 
@@ -2828,9 +2872,81 @@ async function showShopOptions(isWinner) {
         alert(`🔥 Power Rush! +3 multipliers for the next ${newRounds} rounds.`);
         document.getElementById('playerTokens')
                 .textContent = `Tokens: ${tokens - 3}`;
-        displayMultipliers()
+        displayMultipliers();
       }
     },
+    "Decay": {
+      name: "Decay",
+      desc: "Each round: destroy 1 random card & +0.5 to a random stage multiplier",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        if (data.hasDecay)  return alert("You already own Decay.");
+        if (tokens < 3)     return alert("You need 3 tokens to buy Decay.");
+
+        await update(playerRef, {
+          hasDecay: true,                           // flag so we know you own it
+          purchaseTokens: tokens - 3,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            "Decay: delete 1 card & +0.5 random mult each round"
+          ]
+        });
+
+        alert("☠️  Decay acquired! One card will rot away every round…");
+        document.getElementById("playerTokens").textContent = `Tokens: ${tokens - 3}`;
+      }
+    },
+
+    "Card Factory": {
+      name: "Card Factory",
+      desc: "Instantly create 5 random cards of any suit/value (blue suits allowed if owned)",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+        const cost   = 2;                         // match the cost you set above
+
+        if (tokens < cost) return alert("You don't have enough tokens.");
+
+        /* 1️⃣  Decide the suit pool */
+        const suits = ['♠','♥','♦','♣'];
+        if (data.addBlueSuits) suits.push('☾','★');
+
+        /* 2️⃣  Generate five random card texts */
+        const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+        const picks  = [];
+        for (let i = 0; i < 5; i++) {
+          const v   = values[Math.floor(Math.random()*values.length)];
+          const s   = suits[Math.floor(Math.random()*suits.length)];
+          picks.push(v + s);
+        }
+
+        /* 3️⃣  Fold them into duplicateCounts so they’re permanent */
+        const dup   = data.duplicateCounts || {};
+        picks.forEach(text => {
+          dup[text] = (dup[text] || 0) + 1;
+        });
+
+        /* 4️⃣  Persist & log */
+        await update(playerRef, {
+          duplicateCounts: dup,
+          purchaseTokens:  tokens - cost,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Card Factory: added ${picks.join(', ')}`
+          ]
+        });
+
+        alert(`🃏 Card Factory produced: ${picks.join(', ')}`);
+        document.getElementById('playerTokens').textContent =
+          `Tokens: ${tokens - cost}`;
+      }
+    },
+
+
 
 
     ...[1,2,3,4,5].reduce((map, stage) => {
@@ -2867,7 +2983,7 @@ async function showShopOptions(isWinner) {
 
           alert(`Stage ${stage} multiplier increased by +${stage} (now ${newMult[stage]}x)!`);
           document.getElementById('playerTokens').textContent = `Tokens: ${tokens - 1}`;
-          displayMultipliers()
+          displayMultipliers();
         }
       };
       return map;
@@ -2945,18 +3061,18 @@ async function showShopOptions(isWinner) {
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Two-edged", "Super Multiplier",
-      "Witch's Cauldron"
+      "Witch's Cauldron", "Card Factory"
     ].includes(name)) {
       cost = 2;
     }
     if ([
       "Stage 1 Fright", "Cursed Loan", "Remove 2 Clubs", "Remove 2 Spades",
-      "Remove 2 Hearts", "Remove 2 Diamonds", "Power Rush"
+      "Remove 2 Hearts", "Remove 2 Diamonds", "Power Rush", "Decay",
     ].includes(name)) {
       cost = 3;
     }
 
-    // compute dynamic desc for Stage 1 Boost
+    // compute dynamic desc for Stage 1 Boost
     let desc = mod.desc;
     const boostMatch = name.match(/^Stage (\d) Boost$/);
     if (boostMatch) {
@@ -3222,6 +3338,39 @@ async function resetAllPlayers(players) {
     const pdata  = snap.val() || {};
     const left = Math.max((pdata.powerRushRoundsLeft || 0) - 1, 0);
 
+    /* ───── Decay: kill a random card & boost a random stage ───── */
+    if (pdata.hasDecay) {
+      // 1️⃣ build THIS player’s current deck (after previous removals)
+      const liveDeck = buildPlayerDeck(pdata);
+      if (liveDeck.length > 0) {
+        // pick a random survivor
+        const deadCard = liveDeck[Math.floor(Math.random() * liveDeck.length)];
+
+        // flag it for permanent removal
+        const upgrades = pdata.cardUpgrades || [];
+        upgrades.push({ text: deadCard.text, effect: "remove_card" });
+
+        // 2️⃣ pick a random stage 1-5 and add +1
+        const stage     = Math.floor(Math.random() * 5) + 1;
+        const base      = {1:2, 2:3, 3:4, 4:20, 5:500};
+        const oldMults  = { ...base, ...(pdata.multipliers || {}) };
+        const newMults  = { ...oldMults, [stage]: oldMults[stage] + 0.5 };
+
+        // record it
+        const history = pdata.modifierHistory || [];
+        history.push(`Decay: removed ${deadCard.text}, +0.5 to Stage ${stage}`);
+
+        await update(pRef, {
+          cardUpgrades:    upgrades,
+          multipliers:     newMults,
+          modifierHistory: history
+        });
+
+        displayMultipliers();
+      }
+    }
+
+
     let amt = 100;
     (pdata.startBalanceOps || []).forEach(op => {
       if (op.type === 'boost') {
@@ -3286,7 +3435,7 @@ async function grantTokenAndShowShop(winners) {
   "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
   "Cursed Loan", "Summon Kings", "Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
-  "Power Rush"
+  "Power Rush","Decay","Card Factory",
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
