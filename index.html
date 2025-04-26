@@ -2131,7 +2131,7 @@ async function showShopOptions(isWinner) {
       "Ace & Two","Faceless","Remove 2-4","Quick Start","Humble Beginnings",
       "Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
       "Cursed Loan","Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
-      "Power Rush", "Decay", "Card Factory",
+      "Power Rush", "Decay", "Card Factory","Deck Power", "Deck Stash"
     ];
 
     // 2) Build a fresh card upgrade offer
@@ -2885,7 +2885,9 @@ async function showShopOptions(isWinner) {
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-        if (tokens < 4) return alert("You don't have enough tokens.");
+        const cost = 3;
+
+        if (tokens < cost) return alert("You don't have enough tokens.");
 
         // Increment or initialize the rounds‑left counter
         const newRounds = (data.powerRushRoundsLeft || 0) + 3;
@@ -2894,16 +2896,47 @@ async function showShopOptions(isWinner) {
 
         await update(playerRef, {
           powerRushRoundsLeft: newRounds,
-          purchaseTokens:      tokens - 4,
+          purchaseTokens:      tokens - cost,
           modifierHistory:     history
         });
 
         alert(`🔥 Power Rush! +3 multipliers for the next ${newRounds} rounds.`);
         document.getElementById('playerTokens')
-                .textContent = `Tokens: ${tokens - 4}`;
+                .textContent = `Tokens: ${tokens - cost}`;
         displayMultipliers();
       }
     },
+    "Instant Gratification": {
+      name: "Instant Gratification",
+      desc: "For 3 rounds, all win multipliers 1.25x",
+      apply: async () => {
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        const cost = 4;
+        if (tokens < cost) return alert("You don't have enough tokens.");
+
+        // add 3 rounds of ×1.25; stackable with previous leftovers
+        const newRounds = (data.instantGratRoundsLeft || 0) + 3;
+
+        await update(playerRef, {
+          instantGratRoundsLeft: newRounds,
+          purchaseTokens:        tokens - cost,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Instant Gratification: 1.25x for ${newRounds} rounds`
+          ]
+        });
+
+        alert(`Instant Gratification purchased! Multipliers 1.25x for ${newRounds} rounds.`);
+        document.getElementById('playerTokens').textContent = `Tokens: ${tokens - cost}`;
+        displayMultipliers();
+      }
+    },
+
+
+
     "Decay": {
       name: "Decay",
       desc: "Each round: destroy 1 random card & +0.5 to a random stage multiplier",
@@ -2974,6 +3007,86 @@ async function showShopOptions(isWinner) {
           `Tokens: ${tokens - cost}`;
       }
     },
+    "Deck Power": {
+      name: "Deck Power",
+      desc: "Multiply all win multipliers by (|Deck Size| / 52)",
+      apply: async () => {
+        /* 1) Grab freshest player data */
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        /* 2) Set cost (BASE_PRICE_BUMP is added later) */
+        const cost = 4;   // change here if you want it cheaper / dearer
+        if (tokens < cost) return alert("You don't have enough tokens.");
+
+        /* 3) Build the REAL deck to get its current length */
+        const deckSize = buildPlayerDeck(data).length;   // includes dup. cards, blue suits, removals, etc.
+
+        /* 4) Factor = |deck| / 52 (cap at e.g. 3x if you ever want) */
+        const factor = deckSize / 52;
+
+        /* 5) Apply the factor to every stage multiplier */
+        const base = { 1:2, 2:3, 3:4, 4:20, 5:500 };
+        const oldM = { ...base, ...(data.multipliers || {}) };
+        const newM = {};
+        for (const [stage, m] of Object.entries(oldM)) {
+          newM[stage] = +(m * factor).toFixed(2);        // keep two decimals
+        }
+
+        /* 6) Persist changes */
+        await update(playerRef, {
+          multipliers:     newM,
+          purchaseTokens:  tokens - cost,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Deck Power: ${factor.toFixed(2)}x (deck size: ${deckSize})`
+          ]
+        });
+
+        /* 7) UI refresh */
+        alert(`Deck Power purchased! All multipliers ${factor.toFixed(2)}x.`);
+        document.getElementById('playerTokens')
+                .textContent = `Tokens: ${tokens - cost}`;
+        displayMultipliers();
+      }
+    },
+    "Deck Stash": {
+      name: "Deck Stash",
+      desc: "Next round's starting balance + |Deck Size|",
+      apply: async () => {
+        /* 1️⃣  Fetch freshest data */
+        const snap   = await get(playerRef);
+        const data   = snap.val() || {};
+        const tokens = data.purchaseTokens || 0;
+
+        const cost = 4;                         // change if you want it cheaper/dearer
+        if (tokens < cost) return alert("You don't have enough tokens.");
+
+        /* 3️⃣  Figure out deck size right now */
+        const deckSize = buildPlayerDeck(data).length;   // counts duplicates & blue suits
+
+        /* 4️⃣  Record a ‘boost’ op for the next reset */
+        const ops = data.startBalanceOps || [];
+        ops.push({ type: "boost", value: deckSize });
+
+        /* 5️⃣  Persist changes */
+        await update(playerRef, {
+          startBalanceOps: ops,
+          purchaseTokens:  tokens - cost,
+          modifierHistory: [
+            ...(data.modifierHistory || []),
+            `Deck Stash: +${deckSize} start balance next round`
+          ]
+        });
+
+        /* 6️⃣  UI feedback */
+        alert(`Deck Stash purchased! Next round you'll start with +${deckSize} cash.`);
+        document.getElementById("playerTokens").textContent = `Tokens: ${tokens - cost}`;
+      }
+    },
+
+
 
 
 
@@ -3090,13 +3203,14 @@ async function showShopOptions(isWinner) {
       "Stage 1 Shield","Stage 2 Shield","Stage 3 Shield",
       "Stage 4 Shield","Stage 5 Shield",
       "Hail Mary","Two-edged", "Super Multiplier",
-      "Witch's Cauldron", "Card Factory"
+      "Witch's Cauldron", "Card Factory","Power Rush",
     ].includes(name)) {
       cost = 3;
     }
     if ([
       "Stage 1 Fright", "Cursed Loan", "Remove 2 Clubs", "Remove 2 Spades",
-      "Remove 2 Hearts", "Remove 2 Diamonds", "Power Rush", "Decay",
+      "Remove 2 Hearts", "Remove 2 Diamonds", "Decay", "Deck Power", "Deck Stash",
+      "Instant Gratification",
     ].includes(name)) {
       cost = 4;
     }
@@ -3474,7 +3588,7 @@ async function grantTokenAndShowShop(winners) {
   "Hail Mary","Blue Suits & Boost","Snow-baller","Ace & Two","Faceless",
   "Remove 2-4","Quick Start","Humble Beginnings","Clutch King","Kingpin","Two-edged","Witch's Cauldron","Stage 1 Fright",
   "Cursed Loan", "Summon Kings", "Remove 2 Clubs", "Remove 2 Spades", "Remove 2 Hearts", "Remove 2 Diamonds",
-  "Power Rush","Decay","Card Factory",
+  "Power Rush","Instant Gratification","Decay","Card Factory",
 ];
 
   const shuffled = activeModifierKeys.sort(() => Math.random() - 0.5);
