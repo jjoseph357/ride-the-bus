@@ -397,6 +397,13 @@ async function displayMultipliers() {
     );
   }
 
+  const gratLeft = player.instantGratRoundsLeft || 0;
+  if (gratLeft > 0) {
+    items.push(`
+      <li>✨ Instant Gratification: 1.25x for ${gratLeft} round${gratLeft>1?'s':''}</li>`
+    );
+  }
+
   list.innerHTML = items.join("");
 }
 
