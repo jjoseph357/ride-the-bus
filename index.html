@@ -1115,6 +1115,15 @@ async function handleGuess(guess, state) {
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
       }
 
+      // ─── Instant Gratification support ───────────────────────────
+      if (pdata.instantGratRoundsLeft > 0) {
+        /* multiplicative, because the upgrade says “1.25x” */
+        multiplier = Math.round(multiplier * 1.25);
+        console.log(
+          `Instant Gratification applied: ×1.25 (rounds left: ${pdata.instantGratRoundsLeft})`
+        );
+      }
+
       // 3) Now apply your bet modifiers in order
       // Clutch King (if you’ve passed halfway)
       if (
@@ -1256,6 +1265,15 @@ async function handleGuess(guess, state) {
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
       }
 
+      // ─── Instant Gratification support ───────────────────────────
+      if (pdata.instantGratRoundsLeft > 0) {
+        /* multiplicative, because the upgrade says “1.25x” */
+        multiplier = Math.round(multiplier * 1.25);
+        console.log(
+          `Instant Gratification applied: ×1.25 (rounds left: ${pdata.instantGratRoundsLeft})`
+        );
+      }
+
       // 5) Now apply bet‑modifiers in order
       if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
         multiplier += pdata.clutchKingCount;
@@ -1392,6 +1410,14 @@ async function handleGuess(guess, state) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
       }
+      // ─── Instant Gratification support ───────────────────────────
+      if (pdata.instantGratRoundsLeft > 0) {
+        /* multiplicative, because the upgrade says “1.25x” */
+        multiplier = Math.round(multiplier * 1.25);
+        console.log(
+          `Instant Gratification applied: ×1.25 (rounds left: ${pdata.instantGratRoundsLeft})`
+        );
+      }
 
       // 5) Bet‑modifiers
       if (pdata.clutchKingCount > 0 && pdata.betsMade > maxBetsPerPlayer / 2) {
@@ -1526,6 +1552,14 @@ async function handleGuess(guess, state) {
       if (pdata.powerRushRoundsLeft > 0) {
         multiplier += 3;
         console.log(`Power Rush applied: +3 mult (rounds left: ${pdata.powerRushRoundsLeft})`);
+      }
+      // ─── Instant Gratification support ───────────────────────────
+      if (pdata.instantGratRoundsLeft > 0) {
+        /* multiplicative, because the upgrade says “1.25x” */
+        multiplier = Math.round(multiplier * 1.25);
+        console.log(
+          `Instant Gratification applied: ×1.25 (rounds left: ${pdata.instantGratRoundsLeft})`
+        );
       }
 
       // 5) Bet‑modifiers
@@ -3515,6 +3549,7 @@ async function resetAllPlayers(players) {
     const snap   = await get(pRef);
     const pdata  = snap.val() || {};
     const left = Math.max((pdata.powerRushRoundsLeft || 0) - 1, 0);
+    const gratLeft = Math.max((pdata.instantGratRoundsLeft || 0) - 1, 0);
 
     /* ───── Decay: kill a random card & boost a random stage ───── */
     if (pdata.hasDecay) {
@@ -3569,6 +3604,7 @@ async function resetAllPlayers(players) {
       stage1FrightTriggers: 0,
       stage1FrightArmed:    false,
       powerRushRoundsLeft:   left,
+      instantGratRoundsLeft: gratLeft,
       tokenGrantCount: 0,
     });
   }
