@@ -78,6 +78,8 @@
     .card.blue {color: #003bdf;}
 
     .card.black { color: black; }
+    .card.grayed  { filter: opacity(0.35); }
+
     .controls, .betting, .guesses { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
     .controls button, .guesses button { padding: 0.8rem 1.5rem; font-size: 1.1rem; border: none; border-radius: 5px; background: #ff4b2b; color: white; cursor: pointer; }
     .controls button:hover, .guesses button:hover { background: #ff6a4b; }
@@ -497,6 +499,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
     let lobbyCode, playerId, playerRef, stateRef, deckRef;
     let localPlayer = {};
+    // Each player’s personal shoe.  When it empties we auto‑refill.
+    let personalDeck = null;
     let isHost = false;
     let drawnCards = [];
     let lastKnownCurrentPlayer = null;
@@ -582,6 +586,8 @@ window.addEventListener("DOMContentLoaded", () => {
         },
         startBalanceOps: [], 
       };
+      personalDeck = buildPlayerDeck(localPlayer);           // utility you already have
+      await update(playerRef, { personalDeck });
 
       await set(playerRef, localPlayer);
 
@@ -872,112 +878,112 @@ function createCardDisplay(card, effect = null) {
 }
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// drawUniqueCard
+//   • Each player keeps a personalDeck (“shoe”) in their player doc.
+//   • A card drawn once is removed from that sho e and can’t return until the
+//     shoe is empty, at which point it is rebuilt from the player’s full deck
+//     (minus any cards currently face‑up on the table = drawnCards[]).
+// ─────────────────────────────────────────────────────────────────────────────
 async function drawUniqueCard(drawnCards = [], excludeSameValue = false) {
-  // 1️⃣ Load the shared deck
-  const deckSnap   = await get(deckRef);
-  const globalDeck = deckSnap.val() || [];
 
-  // 2️⃣ Load this player’s modifiers
-  const playerSnap = await get(playerRef);
-  const data       = playerSnap.val() || {};
-  const dupCounts     = data.duplicateCounts || {};
-  const boostCount    = data.aceTwoBoostCount   || 0;
-  const facelessCount = data.facelessCount      || 0;
-  const remove2to4    = data.remove2to4Count    || 0;
-  const remove7and8   = data.remove7and8Count   || 0;
+  /* 1️⃣  Load player data (includes any existing shoe) */
+  const pSnap      = await get(playerRef);
+  const data       = pSnap.val() || {};
+  let   personal   = data.personalDeck || [];          // the shoe
 
-  // 3️⃣ Build the in‑memory pool
-  let pool = [...globalDeck];
+  /* 2️⃣  Rebuild the shoe if missing or empty ─────────────────────────── */
+  if (personal.length === 0) {
 
-  // ─── Remove specific cards by upgrade ───────────────────
-  const removedTexts = (data.cardUpgrades || [])
-    .filter(u => u.effect === 'remove_card')
-    .map(u => u.text);
-  pool = pool.filter(c => !removedTexts.includes(c.text));
+    // 2a.  Start from the player’s *full* customised deck
+    let pool = buildPlayerDeck(data)
+                .filter(c => !drawnCards.some(d => d.text === c.text)); // skip in‑play
 
-  // ─── Duplicate‑card stacking ───────────────────────────
-  Object.entries(dupCounts).forEach(([text, count]) => {
-    const template = pool.find(c => c.text === text);
-    if (!template) return;
-    for (let i = 0; i < count; i++) {
-      pool.push({ ...template, _isDup: true });
-    }
-  });
+    // 2b.  Duplicate‑card stacking
+    const dupCounts = data.duplicateCounts || {};
+    Object.entries(dupCounts).forEach(([text, count]) => {
+      const template = pool.find(c => c.text === text);
+      if (!template) return;
+      for (let i = 0; i < count; i++) pool.push({ ...template, _isDup: true });
+    });
 
-  // ─── Blue suits ───────────────────────────────────────
-  if (data.addBlueSuits) {
-    const blueSuits = ['☾','★'];
-    const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-    for (const suit of blueSuits) {
-      for (const v of values) {
-        const num = v==='A'?14:v==='K'?13:v==='Q'?12:v==='J'?11:parseInt(v,10);
-        pool.push({ text: v + suit, suit, value: num, _isBlue: true });
+    // 2c.  Optional blue suits
+    if (data.addBlueSuits) {
+      const blueSuits = ['☾', '★'];
+      const values    = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+      for (const suit of blueSuits) {
+        for (const v of values) {
+          const num = v==='A'?14:v==='K'?13:v==='Q'?12:v==='J'?11:parseInt(v,10);
+          pool.push({ text: v + suit, suit, value: num, _isBlue: true });
+        }
       }
     }
-  }
 
-  // ─── Ace & Two boosts ─────────────────────────────────
-  if (boostCount > 0) {
-    let suits = ['♠','♥','♦','♣'];
-    if (data.addBlueSuits)        suits.push('☾','★');
-    if (data.removeDiamondsClubs) suits = suits.filter(s => s!=='♦' && s!=='♣');
+    // 2d.  Ace & Two boost stacks
+    const boostCount = data.aceTwoBoostCount || 0;
+    if (boostCount > 0) {
+      let suits = ['♠','♥','♦','♣'];
+      if (data.addBlueSuits)        suits.push('☾','★');
+      if (data.removeDiamondsClubs) suits = suits.filter(s => s!=='♦' && s!=='♣');
 
-    for (let i = 0; i < boostCount; i++) {
-      for (const suit of suits) {
-        pool.push({ text: 'A'+suit, suit, value: 14, _isDup: true });
-        pool.push({ text: '2'+suit, suit, value: 2,  _isDup: true });
+      for (let i = 0; i < boostCount; i++) {
+        for (const suit of suits) {
+          pool.push({ text: 'A'+suit, suit, value: 14, _isDup: true });
+          pool.push({ text: '2'+suit, suit, value: 2,  _isDup: true });
+        }
       }
     }
+
+    personal = pool;                               // finished shoe
+    await update(playerRef, { personalDeck: personal });
   }
 
-  // 4️⃣ Draw a unique card
+  /* 3️⃣  Draw until something passes every filter ─────────────────────── */
+  const {
+    facelessCount      = 0,
+    remove2to4Count    = 0,
+    remove7and8Count   = 0,
+    removeDiamondsClubs
+  } = data;
+
   let card  = null;
-  let tries = pool.length;
+  let tries = personal.length;
 
   while (tries-- && !card) {
-    const idx     = Math.floor(Math.random() * pool.length);
-    const attempt = pool.splice(idx, 1)[0];
+    const idx     = Math.floor(Math.random() * personal.length);
+    const attempt = personal[idx];                // don’t pop yet
 
-    // ─── 1) Apply Witch’s Cauldron mapping *before* filtering ───
+    // ── Witch’s Cauldron mapping (if any) ────────────────────────────
     if (data.witchCauldronMap?.[attempt.text]) {
-      const { value: mappedValue, suit: mappedSuit } = data.witchCauldronMap[attempt.text];
-      // Update suit, value, AND text so createCardDisplay shows correctly
-      attempt.value = mappedValue;
-      attempt.suit  = mappedSuit;
-      attempt.text  = (
-        mappedValue === 14 ? 'A' :
-        mappedValue === 13 ? 'K' :
-        mappedValue === 12 ? 'Q' :
-        mappedValue === 11 ? 'J' :
-        mappedValue.toString()
-      ) + mappedSuit;
+      const { value: mv, suit: ms } = data.witchCauldronMap[attempt.text];
+      attempt.value = mv;
+      attempt.suit  = ms;
+      attempt.text  = (mv===14?'A':mv===13?'K':mv===12?'Q':mv===11?'J':mv) + ms;
       attempt._cauldron = true;
     }
 
-    // ─── 2) Compute filters against the *mapped* value ──────────
-    const dupCard  = drawnCards.some(c => c.text  === attempt.text);
-    const dupValue = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
-    const removeSuit = data.removeDiamondsClubs && (attempt.suit==='♦' || attempt.suit==='♣');
+    // ── Existing filters ─────────────────────────────────────────────
+    const dupCard   = drawnCards.some(c => c.text  === attempt.text);
+    const dupValue  = excludeSameValue && drawnCards.some(c => c.value === attempt.value);
+    const removeSuit = removeDiamondsClubs && (attempt.suit==='♦' || attempt.suit==='♣');
     const removeFace = facelessCount > 0 && [11,12,13].includes(attempt.value);
-    const removeLow  = remove2to4 > 0       && [2,3,4].includes(attempt.value);
-    const remove78   = remove7and8 > 0      && [7,8].includes(attempt.value);
+    const removeLow  = remove2to4Count > 0 && [2,3,4].includes(attempt.value);
+    const remove78   = remove7and8Count > 0 && [7,8].includes(attempt.value);
 
     if (dupCard || dupValue || removeSuit || removeFace || removeLow || remove78) {
-      continue;
+      continue;                                   // pick again
     }
 
-    // ─── 3) This one is good ────────────────────────────────────
+    // ── Accept this card and remove it from the shoe ────────────────
     card = attempt;
-
-    // ─── 4) If from the shared deck, remove it there (only in multiplayer) ──
-    if (!card._isBlue && !card._isDup && !soloMode) {
-      const newGlobal = globalDeck.filter(c => c.text !== card.text);
-      await set(deckRef, newGlobal);
-    }
+    personal.splice(idx, 1);
   }
 
+  /* 4️⃣  Persist the shoe’s new state and return the draw ─────────────── */
+  await update(playerRef, { personalDeck: personal });
   return card;
 }
+
 
 async function applyOneBetBonus() {
   const snap = await get(playerRef);
@@ -3977,7 +3983,8 @@ async function showDeck() {
 
 
   const upgrades = playerData.cardUpgrades || [];
-
+  const remaining = new Set(playerData.personalDeck?.map(c => c.text) || []);
+  
   // 3) render into the modal
   const container = document.getElementById('deckContent');
   container.innerHTML = '';  // clear previous
@@ -4014,6 +4021,7 @@ async function showDeck() {
       cardEl.title = match.effect.replace(/_/g, ' ');
     }
 
+    if (!remaining.has(card.text)) cardEl.classList.add('grayed');
     grid.appendChild(cardEl);
   });
 
