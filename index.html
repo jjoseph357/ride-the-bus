@@ -3548,6 +3548,40 @@ function playFailureTone() {
   });
 }
 
+// ─── Decide who (if anyone) won the round ────────────────────────────
+async function decideRoundWinner(players, roundTarget) {
+
+  // 1️⃣  Pick only those who survived AND reached the goal
+  const qualified = Object.entries(players)          // [id, pdata]
+    .filter(([, p]) => !p.eliminated && p.balance >= roundTarget);
+
+  let winnerId = null;
+
+  if (qualified.length) {
+    // 2️⃣  Highest balance among the qualified players
+    qualified.sort((a, b) => b[1].balance - a[1].balance);
+    winnerId = qualified[0][0];
+  }
+  // else {
+  //   // OPTIONAL: pick top balance even if nobody hit the goal
+  //   winnerId = Object.entries(players)
+  //                   .sort((a, b) => b[1].balance - a[1].balance)[0][0];
+  // }
+
+  // 3️⃣  Update each player’s state atomically
+  const updates = {};
+  Object.keys(players).forEach(pid => {
+    updates[`${pid}/isRoundWinner`] = (pid === winnerId);
+    if (pid === winnerId) {
+      updates[`${pid}/roundsWon`]   = (players[pid].roundsWon || 0) + 1;
+    }
+  });
+  await update(ref(db, `games/${lobbyCode}/players`), updates);
+
+  return winnerId;           // for any post‑win UI / logic you have
+}
+
+
 
 async function resetAllPlayers(players) {
   for (const id of Object.keys(players)) {
@@ -3734,10 +3768,7 @@ async function checkRoundCompletion() {
               + (p.roundBetBonus    || 0);
     return (p.betsMade || 0) < cap;
   });
-  const isDefaultWin = Object.keys(players).length > 1
-    && unfinished.length === 1
-    && finished.length === activePlayers.length - 1
-    && unfinished[0].balance > Math.max(...finished.map(p => p.balance));
+
 
   const currentStateSnap = await get(stateRef);
   const currentState = currentStateSnap.val();
@@ -3906,54 +3937,49 @@ async function checkRoundCompletion() {
   }
 
 
-  // DEFAULT WIN
-  if (isDefaultWin) {
-    const lastPlayerId = Object.entries(players).find(([_, p]) => p.balance > 0 && !p.eliminated)[0];
-    const lastPlayer = players[lastPlayerId];
-    const winners = [[lastPlayerId, lastPlayer]];
-
-    await update(ref(db, `games/${lobbyCode}/players/${lastPlayerId}`), {
-      roundsWon: (lastPlayer.roundsWon || 0) + 1
-    });
-
-    alert(`${lastPlayer.name} has won the round by default!`);
-
-    await resetAllPlayers(players);
-    await reshuffleDeck();
-
-    // 🧠 Set game state *before* granting tokens/shop
-    await update(stateRef, {
-      gameStarted: true,
-      currentPlayer: lastPlayerId,
-      currentStage: 0,
-      drawnCards: [],
-      status: `Waiting for ${lastPlayer.name} to start their turn.`,
-      maxBetsPerPlayer: currentMaxBets
-    });
-
-    // 🪙 This now triggers correctly when state.currentStage is already 0
-    await grantTokenAndShowShop(winners);
-    const currentStateSnap2 = await get(stateRef);
-    const stateObj = currentStateSnap2.val() || {};
-    await update(stateRef, { status: stateObj.status + ' ' });
-    return;
-  }
-
 
 // CONTINUE IF ANYONE HAS BETS LEFT
 const allDone = activePlayers.every(p => {
   const permBonus = p.betModifierBonus || 0;
   const roundBonus = p.roundBetBonus || 0;
   const effectiveMax = maxBetsPerPlayer + permBonus + roundBonus;
-  return p.betsMade >= effectiveMax;
+  return (p.betsMade || 0) >= effectiveMax;
 });
 
 
-if (!allDone) return advanceToNextPlayer();
+if (!allDone) {
 
-  // NORMAL WIN SCENARIO
-  const maxBalance = Math.max(...activePlayers.map(p => p.balance));
-  const winners = Object.entries(players).filter(([_, p]) => p.balance === maxBalance);
+  /* ── NEW DEFAULT‑END RULE ────────────────────────────────────────
+   * If exactly one player is still allowed to bet AND that player
+   * already has the highest balance at this moment, we short‑circuit
+   * the rest of the round and treat it as finished.
+   */
+  const unfinished = activePlayers.filter(p => {
+    const perm = p.betModifierBonus || 0;
+    const rnd  = p.roundBetBonus    || 0;
+    const max  = maxBetsPerPlayer + perm + rnd;
+    return (p.betsMade || 0) < max;
+  });
+
+  const richestBal = Math.max(...activePlayers.map(p => p.balance));
+  const isDefaultEnd = unfinished.length === 1
+                    && unfinished[0].balance === richestBal;
+
+  if (!isDefaultEnd) return advanceToNextPlayer();
+}
+
+/* 1️⃣  Players who actually reached / passed the target */
+const qualified = activePlayers.filter(p => p.balance >= currentThresh);
+
+/* 2️⃣  Decide which list to rank:   qualified ▸ else everyone */
+const pool = qualified.length ? qualified : activePlayers;
+
+/* 3️⃣  Highest balance in that pool becomes winner(s) */
+const topBal  = Math.max(...pool.map(p => p.balance));
+const winners = Object.entries(players)
+                 .filter(([_, p]) => pool.includes(p) && p.balance === topBal);
+
+
 
   for (const [id, p] of winners) {
     await update(ref(db, `games/${lobbyCode}/players/${id}`), {
