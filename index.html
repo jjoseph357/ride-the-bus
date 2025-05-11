@@ -3811,6 +3811,8 @@ async function checkRoundCompletion() {
         stage1FrightTriggers: 0
       });
 
+      await resetAllPlayers(players);        
+
       const nextThresh = Math.floor(currentThresh * 1.25);
       await set(stateRef, {
         gameStarted:      true,
@@ -3882,6 +3884,8 @@ async function checkRoundCompletion() {
         roundBetBonus:       0,
         stage1FrightTriggers: 0
       });
+
+      await resetAllPlayers(players);        
 
       const nextThresh = Math.floor(currentThresh * 1.25);
       await set(stateRef, {
