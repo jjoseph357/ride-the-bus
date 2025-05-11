@@ -3554,6 +3554,23 @@ async function resetAllPlayers(players) {
     const pRef   = ref(db, `games/${lobbyCode}/players/${id}`);
     const snap   = await get(pRef);
     const pdata  = snap.val() || {};
+
+    /* ── NEW ── Reset the personal shoe so every card is drawable again */
+    // 1️⃣  Start from the player’s full customised deck
+    const baseDeck = buildPlayerDeck(pdata);
+    let   personal = [...baseDeck];
+    
+    // 2️⃣  Add any duplicate‑card purchases
+    const dupCounts = pdata.duplicateCounts || {};
+    Object.entries(dupCounts).forEach(([text, count]) => {
+      const template = baseDeck.find(c => c.text === text);
+      if (!template) return;
+      for (let i = 0; i < count; i++) personal.push({ ...template, _isDup: true });
+    });
+    
+    // 3️⃣  (Optional) you could shuffle here if you like:
+    // personal.sort(() => Math.random() - 0.5);
+
     const left = Math.max((pdata.powerRushRoundsLeft || 0) - 1, 0);
     const gratLeft = Math.max((pdata.instantGratRoundsLeft || 0) - 1, 0);
 
@@ -3612,7 +3629,10 @@ async function resetAllPlayers(players) {
       powerRushRoundsLeft:   left,
       instantGratRoundsLeft: gratLeft,
       tokenGrantCount: 0,
+      personalDeck: personal,
     });
+
+    if (id === playerId) localPlayer.personalDeck = personal;
   }
 
   // sync local copy for this client
