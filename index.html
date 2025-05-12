@@ -64,6 +64,52 @@
       max-height: 200px;
       overflow-y: auto;
     }
+
+    /* ─── Mode‑select splash ───────────────────────────── */
+    #modeSelect {
+      display:flex;                     /* flexbox row on desktop … */
+      flex-direction:column;            /* … stacks on narrow screens */
+      gap:1.5rem;
+      align-items:center;
+      justify-content:center;
+      padding:3rem 2rem;
+      margin-top:4vh;
+      background:rgba(255,255,255,0.08);
+      border-radius:32px;
+      backdrop-filter:blur(8px);
+      box-shadow:0 20px 60px rgba(0,0,0,0.6);
+      max-width:460px;
+      width:90%;
+      transition:all .4s ease;
+    }
+
+    .mode-btn{
+      --angle:130deg;                   /* fancy shifting gradient */
+      padding:1.25rem 2.5rem;
+      font-size:1.4rem;
+      font-weight:600;
+      color:#fff;
+      background:
+        linear-gradient(var(--angle),
+          #ff416c 0%,#ff4b2b 50%,#ff416c 100%);
+      border:none;
+      border-radius:14px;
+      cursor:pointer;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      transition:transform .2s ease, filter .2s ease;
+    }
+    .mode-btn:hover{
+      transform:translateY(-4px) scale(1.03);
+      filter:brightness(1.15);
+    }
+    @keyframes swirl {
+      0%{--angle:130deg}
+      100%{--angle:490deg}
+    }
+    .mode-btn:active{
+      animation:swirl 1s linear infinite;
+    }
+
 .player-box.eliminated {
   opacity: 0.4;
   font-style: italic;
@@ -206,6 +252,13 @@
 </head>
 <body>
   <h1>Ride the Bus 🚌</h1>
+
+  <!-- ───── GAME MODE SPLASH ───── -->
+  <div id="modeSelect">
+    <button id="singlePlayerBtn" class="mode-btn">Single Player</button>
+    <button id="multiPlayerBtn"  class="mode-btn">Multiplayer</button>
+  </div>
+
   <!-- ⚙️ Settings button, always visible -->
   <button id="settingsBtn"
           style="position:absolute; top:1rem; left:1rem; z-index:1000;">
@@ -265,7 +318,9 @@
     </button>
   </div>
 
-  <div class="lobby" id="lobby">
+  
+
+  <div class="lobby hidden" id="lobby">
     <h2>Join or Create a Game</h2>
     <input type="text" id="playerName" placeholder="Your Name" />
     <input type="text" id="lobbyCode" placeholder="Lobby Code (4 digits)" maxlength="4" />
@@ -418,6 +473,56 @@ window.addEventListener("DOMContentLoaded", () => {
   const startTurnBtn = document.getElementById("startTurnBtn");
   const resetGameBtn = document.querySelector(".controls button");
 
+  /* ─── Mode‑select handlers ───────────────────────── */
+  const modeDiv       = document.getElementById('modeSelect');
+  const lobbyDiv      = document.getElementById('lobby');
+
+  const singleBtn     = document.getElementById('singlePlayerBtn');
+  const multiBtn      = document.getElementById('multiPlayerBtn');
+
+  /* Multiplayer: reveal the normal lobby UI */
+  multiBtn.addEventListener('click', () => {
+    modeDiv.remove();                       
+    lobbyDiv.classList.remove('hidden');
+
+    // show lobby‑code + join/create buttons
+    document.getElementById('lobbyCode')  .classList.remove('hidden');
+    document.getElementById('joinGameBtn').classList.remove('hidden');
+    document.getElementById('createGameBtn').classList.remove('hidden');
+    document.getElementById('startGameBtn').classList.add   ('hidden');
+  });
+
+  /* Single‑player: auto‑create a private lobby and jump in */
+  singleBtn.addEventListener('click', async () => {
+    modeDiv.remove();
+    lobbyDiv.classList.remove('hidden');
+
+    // 1) trim the lobby UI down to “name + Start Game”
+    document.getElementById('lobbyCode')  .classList.add   ('hidden');
+    document.getElementById('joinGameBtn').classList.add   ('hidden');
+    document.getElementById('createGameBtn').classList.add ('hidden');
+    const soloStart = document.getElementById('startGameBtn');
+    soloStart.classList.remove('hidden');
+    soloMode = true;                         // global flag already used later
+
+    /* 2) When the player clicks Start Game:
+          • silently spin up a random lobby
+          • join it as host
+          • immediately launch the game          */
+    soloStart.onclick = async () => {
+      const name = document.getElementById('playerName').value.trim();
+      if(!name) return alert('Enter your name first!');
+      const code = generateLobbyCode();
+      document.getElementById('lobbyCode').value = code;  // invisible but needed
+      isHost = true;
+
+      // joinLobby() sets up DB refs, then we can auto‑start
+      await joinLobby();           // << existing function
+      await startGame();           // << your normal startGame – detects solo mode
+    };
+  });
+
+
   if (createGameBtn) createGameBtn.addEventListener("click", () => {
     const generatedCode = generateLobbyCode();
     document.getElementById('lobbyCode').value = generatedCode;
@@ -514,7 +619,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const MAX_TOKEN_INTEREST = 5;
     function tokenInterest(tokensHeld) {
       /* +1 token for every full 5 you already own, to a max of +5 */
-      return Math.min(Math.floor(tokensHeld / 5), MAX_TOKEN_INTEREST);
+      return Math.min(Math.floor(tokensHeld / 4), MAX_TOKEN_INTEREST);
     }
 
 
@@ -2162,7 +2267,7 @@ async function showShopOptions(isWinner) {
   tokenDisplay.innerHTML =
     `Tokens: <strong>${playerData.purchaseTokens || 0}</strong>` +
     `<br><span style="font-size:0.8rem; opacity:0.8;">` +
-    `💡 Every 5 tokens you're holding earns +1 extra at round&nbsp;end &nbsp;(max&nbsp;+5)` +
+    `💡 Every 4 you're holding earns +1 extra at round&nbsp;end &nbsp;(max&nbsp;+5)` +
     `</span>`;
 
   // ▶️ Reshuffle button (1 token)
