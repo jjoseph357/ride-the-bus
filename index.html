@@ -874,23 +874,19 @@ window.addEventListener("DOMContentLoaded", () => {
 
       // ───── MULTIPLAYER FALLBACK ─────
       if (playerCount >= 6)         maxBetsPerPlayer = 3;
-      else if (playerCount >= 5)    maxBetsPerPlayer = 3;
-      else if (playerCount >= 4)    maxBetsPerPlayer = 4;
-      else if (playerCount >= 3)    maxBetsPerPlayer = 5;
-      else                          maxBetsPerPlayer = 6;
+      else if (playerCount >= 5)    maxBetsPerPlayer = 4;
+      else if (playerCount >= 4)    maxBetsPerPlayer = 5;
+      else if (playerCount >= 3)    maxBetsPerPlayer = 6;
+      else                          maxBetsPerPlayer = 7;
 
-      const winnerIds     = winners.map(([id]) => id);    // [ 'uid1', 'uid3', … ]
-      const nextPlayerId  = winnerIds.length === 1
-                          ? winnerIds[0]
-                          : winnerIds[Math.floor(Math.random() * winnerIds.length)];
-
+      const firstPlayerId = Object.keys(players)[0];
       await update(stateRef, {
         gameStarted:      true,
-        currentPlayer:    nextPlayerId,
+        currentPlayer:    firstPlayerId,
         currentStage:     0,
         drawnCards:       [],
         status:           `Waiting for ${players[firstPlayerId].name} to start their turn.`,
-        maxBetsPerPlayer: currentMaxBets
+        maxBetsPerPlayer
       });
     };
 
@@ -4107,14 +4103,10 @@ const winners = Object.entries(players)
   const stateObj = currentStateSnap2.val() || {};
   await update(stateRef, { status: stateObj.status + ' ' });
 
-  const winnerIds     = winners.map(([id]) => id);    // [ 'uid1', 'uid3', … ]
-  const nextPlayerId  = winnerIds.length === 1
-                      ? winnerIds[0]
-                      : winnerIds[Math.floor(Math.random() * winnerIds.length)];
-
+  const firstPlayerId = Object.keys(players)[0];
   await update(stateRef, {
     gameStarted: true,
-    currentPlayer: nextPlayerId,
+    currentPlayer: firstPlayerId,
     currentStage: 0,
     drawnCards: [],
     status: `Waiting for ${players[firstPlayerId].name} to start their turn.`,
