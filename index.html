@@ -593,9 +593,9 @@ window.addEventListener("DOMContentLoaded", () => {
       status: `${localPlayer.name} - Stage 1: Red or Black?`
     });
 
-    if (!soloMode) startCountdown(20, () => {
-      endTurn("Ran out of time! You lose.", 0);
-    });
+    //if (!soloMode) startCountdown(20, () => {
+    //  endTurn("Ran out of time! You lose.", 0);
+    //});
     
   });
 
@@ -804,10 +804,9 @@ window.addEventListener("DOMContentLoaded", () => {
             // }
 
             playTurnSound();
-            if (!soloMode) {
-              startCountdown(20, () => {
-                endTurn("Ran out of time before starting turn!", 0);
-              });
+            //if (!soloMode) startCountdown(20, () => {
+            //  endTurn("Ran out of time! You lose.", 0);
+            //});
             }
           }
           lastKnownCurrentPlayer = currentId;
@@ -2059,7 +2058,9 @@ async function updateGameDOM(state) {
     });
 
 
-    if (!soloMode) startCountdown(20, () => endTurn("Ran out of time! You lose.", 0));
+    //if (!soloMode) startCountdown(20, () => {
+    //  endTurn("Ran out of time! You lose.", 0);
+    //});
   }
 
   // 5) Finally, update the multiplier list
