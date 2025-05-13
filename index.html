@@ -3918,7 +3918,7 @@ async function checkRoundCompletion() {
 
       await resetAllPlayers(players);        
 
-      const nextThresh = Math.floor(currentThresh * 1.25);
+      const nextThresh = Math.floor(currentThresh * 1.15);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
@@ -3992,7 +3992,7 @@ async function checkRoundCompletion() {
 
       await resetAllPlayers(players);        
 
-      const nextThresh = Math.floor(currentThresh * 1.25);
+      const nextThresh = Math.floor(currentThresh * 1.15);
       await set(stateRef, {
         gameStarted:      true,
         currentPlayer:    playerId,
