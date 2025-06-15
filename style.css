@@ -1,0 +1,237 @@
+ body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding-bottom: 3rem;
+      overflow: auto;
+    }
+    html, body {
+      overflow-x: hidden;   /* NEW – stop horizontal scroll */
+    }
+
+    .lobby {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2rem;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      text-align: center;
+      max-width: 400px;
+      margin-bottom: 2rem;
+    }
+    .lobby input {
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 10px;
+      border: none;
+      width: 100%;
+      font-size: 1rem;
+    }
+    .lobby button {
+      padding: 0.75rem;
+      border-radius: 10px;
+      background: #ff4b2b;
+      color: white;
+      border: none;
+      font-size: 1rem;
+      width: 100%;
+      cursor: pointer;
+    }
+    .lobby button:hover {
+      background: #ff6a4b;
+    }
+    .lobby-list {
+      margin-top: 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 1rem;
+      border-radius: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* ─── Mode‑select splash ───────────────────────────── */
+    #modeSelect {
+      display:flex;                     /* flexbox row on desktop … */
+      flex-direction:column;            /* … stacks on narrow screens */
+      gap:1.5rem;
+      align-items:center;
+      justify-content:center;
+      padding:3rem 2rem;
+      margin-top:4vh;
+      background:rgba(255,255,255,0.08);
+      border-radius:32px;
+      backdrop-filter:blur(8px);
+      box-shadow:0 20px 60px rgba(0,0,0,0.6);
+      max-width:460px;
+      width:90%;
+      transition:all .4s ease;
+    }
+
+    .mode-btn{
+      --angle:130deg;                   /* fancy shifting gradient */
+      padding:1.25rem 2.5rem;
+      font-size:1.4rem;
+      font-weight:600;
+      color:#fff;
+      background:
+        linear-gradient(var(--angle),
+          #ff416c 0%,#ff4b2b 50%,#ff416c 100%);
+      border:none;
+      border-radius:14px;
+      cursor:pointer;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      transition:transform .2s ease, filter .2s ease;
+    }
+    .mode-btn:hover{
+      transform:translateY(-4px) scale(1.03);
+      filter:brightness(1.15);
+    }
+    @keyframes swirl {
+      0%{--angle:130deg}
+      100%{--angle:490deg}
+    }
+    .mode-btn:active{
+      animation:swirl 1s linear infinite;
+    }
+
+.player-box.eliminated {
+  opacity: 0.4;
+  font-style: italic;
+}
+    .hidden { display: none; }
+    .player-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+    .player-box { background: #ffffff22; padding: 1rem; border-radius: 10px; text-align: center; min-width: 150px; }
+    .player-box.active { border: 2px solid gold; }
+    .card-area { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin: 1rem 0; }
+    .card { width: 100px; height: 150px; border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+    .card.red { color: red; }
+    .card.blue {color: #003bdf;}
+
+    .card.black { color: black; }
+    .card.grayed  { filter: opacity(0.35); }
+
+    .controls, .betting, .guesses { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+    .controls button, .guesses button { padding: 0.8rem 1.5rem; font-size: 1.1rem; border: none; border-radius: 5px; background: #ff4b2b; color: white; cursor: pointer; }
+    .controls button:hover, .guesses button:hover { background: #ff6a4b; }
+    .status { font-size: 1.2rem; margin-top: 1rem; }
+    input[type=number], select { padding: 0.5rem; border-radius: 5px; border: none; width: 100px; }
+  .shop-item {
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 0.75rem;
+    margin: 0.5rem;
+    flex: 1 1 150px; /* previously 250px */
+    max-width: 180px; /* constrain to prevent huge width */
+    min-width: 120px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease;
+    word-wrap: break-word;
+  }
+
+  .shop-item:hover {
+    transform: scale(1.03);
+  }
+
+  .shop-item button {
+    background-color: #ff4b2b;
+    border: none;
+    padding: 0.5rem 1rem;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 0.5rem;
+  }
+
+  .shop-item button:hover {
+    background-color: #ff6a4b;
+  }
+
+  .glowing-red {
+    box-shadow: 0 0 12px 4px red;
+  }
+
+  .glowing-gold {
+    box-shadow: 0 0 12px 4px gold;
+  }
+  .glowing-orange {
+    box-shadow: 0 0 12px 4px rgb(212, 115, 3);
+  }
+
+  #betModifiers,
+  #cardUpgradeArea {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  #playerTokens {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+  /* —————— Overlays —————— */
+  #deckModal:not(.hidden), #gameOverModal:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    backdrop-filter: blur(5px);
+  }
+  #deckModal h2, #gameOverModal h2 {
+    font-size: 2.2rem;
+    margin-bottom: 1rem;
+  }
+  #deckContent, #gameOverContent {
+    width: 90%;
+    max-width: 600px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    margin-bottom: 1.5rem;
+  }
+
+  /* —————— Main game container —————— */
+  #gameUI {
+    max-width: 640px;
+    width: 100%;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    background: rgba(255,255,255,0.08);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  /* Buttons */
+  #gameOverModal button,
+  #deckModal button,
+  #gameUI button {
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  #gameOverModal button:hover,
+  #deckModal button:hover,
+  #gameUI button:hover {
+    transform: translateY(-2px);
+    background: #ff6a4b;
+  }
+
+  /* Nice typography */
+  body, #gameUI, #deckModal, #gameOverModal {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  #gameOverModal p, #gameOverModal ul {
+    line-height: 1.5;
+    max-width: 600px;
+  }
+  .my-turn {
+    box-shadow: 0px 0px 25px -10px gold !important;
+  }
+  
+  
