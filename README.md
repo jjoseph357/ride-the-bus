@@ -128,3 +128,4 @@ To do:
 - Have a "My Deck" summary (like Balatro)
 - Tournament Style when more than 4
     - Round Robin
+- Single Player should not write to the database 
