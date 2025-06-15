@@ -114,7 +114,7 @@ To do:
 - ~~Nerf + 1 bets card draw~~
 - ~~Nerf Stage 1 boost~~
 - Reshuffle stops working
-- Starting balance stops working
+- Starting balance upgrades stops working
 - ~~End multiplayer round when all other players are done~~
 - ~~Interest for every 5 tokens (max 5)~~
 - ~~Display modifiers after curse loan cash out~~
@@ -122,3 +122,9 @@ To do:
 - ~~Winner by default wrong~~
 - When timer runs out, player gets balance from last round
 - Deck size increases multipliers
+- Modulation
+- Showing what other players pick
+- Cards reappearing even if used, typically occurs with certain powerups (blue deck?)
+- Have a "My Deck" summary (like Balatro)
+- Tournament Style when more than 4
+    - Round Robin
