@@ -29,18 +29,18 @@
     document.getElementById('toggleInterest').checked = settings.interestAlerts;
     document.getElementById('toggleLoan').checked     = settings.loanAlerts;
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyD5Zu_Qsv3reVuB6PrombL954zSKHWPewY",
-    authDomain: "ride-the-bus-d9f3f.firebaseapp.com",
-    projectId: "ride-the-bus-d9f3f",
-    storageBucket: "ride-the-bus-d9f3f.firebasestorage.app",
-    messagingSenderId: "1213292677",
-    appId: "1:1213292677:web:123df0546c297f03fb49ec",
-    measurementId: "G-X9VK7R0RQE"
-  };
+    const firebaseConfig = {
+      apiKey: "AIzaSyD5Zu_Qsv3reVuB6PrombL954zSKHWPewY",
+      authDomain: "ride-the-bus-d9f3f.firebaseapp.com",
+      projectId: "ride-the-bus-d9f3f",
+      storageBucket: "ride-the-bus-d9f3f.firebasestorage.app",
+      messagingSenderId: "1213292677",
+      appId: "1:1213292677:web:123df0546c297f03fb49ec",
+      measurementId: "G-X9VK7R0RQE"
+    };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
   // Multiplier bonuses per stage (modifiable later)
   const multipliers = {
     1: 2,
