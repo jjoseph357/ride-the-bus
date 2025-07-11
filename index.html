@@ -616,10 +616,10 @@ window.addEventListener("DOMContentLoaded", () => {
     let guessLock = false;
     const CURSED_LOAN_INC = 0.25;
     // ─── Token interest helper ──────────────────────────────────────────
-    const MAX_TOKEN_INTEREST = 5;
+    const MAX_TOKEN_INTEREST = 10;
     function tokenInterest(tokensHeld) {
       /* +1 token for every full 5 you already own, to a max of +5 */
-      return Math.min(Math.floor(tokensHeld / 4), MAX_TOKEN_INTEREST);
+      return Math.min(Math.floor(tokensHeld / 5), MAX_TOKEN_INTEREST);
     }
 
 
@@ -680,7 +680,7 @@ window.addEventListener("DOMContentLoaded", () => {
         roundsWon: 0,
         betsMade: 0,
         eliminated: false,
-        purchaseTokens: 0,
+        purchaseTokens: 10,
         cardUpgrades: [],
         multipliers: {
           1: 2,
