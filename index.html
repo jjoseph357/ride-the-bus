@@ -3827,7 +3827,7 @@ async function grantTokenAndShowShop(winners) {
   for (const [id, data] of Object.entries(players)) {
     const isWinner = winners.some(([winnerId]) => winnerId === id);
     const oldTokens = data.purchaseTokens || 0;   // what the player had
-    const baseEarn  = isWinner ? 2 : 1;                         // flat round-reward
+    const baseEarn  = 3;                         // flat round-reward
     const bonus     = tokenInterest(oldTokens);   // new interest
     const newTokens = oldTokens + baseEarn + bonus;
 
