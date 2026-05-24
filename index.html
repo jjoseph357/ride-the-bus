@@ -919,10 +919,9 @@ window.addEventListener("DOMContentLoaded", () => {
       const playerCount = Object.keys(players).length;
 
       // ───── SOLO MODE ─────
-      // If only one player, give 8 bets and set threshold
       if (playerCount === 1) {
         soloMode = true;
-        maxBetsPerPlayer = 10;
+        maxBetsPerPlayer = 5;
         // initialize threshold at $100
         await set(stateRef, {
           gameStarted:      true,
@@ -936,12 +935,12 @@ window.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // ───── MULTIPLAYER FALLBACK ─────
-      if (playerCount >= 6)         maxBetsPerPlayer = 3;
-      else if (playerCount >= 5)    maxBetsPerPlayer = 4;
+      // ───── MULTIPLAYER ─────
+      if (playerCount >= 6)         maxBetsPerPlayer = 5;
+      else if (playerCount >= 5)    maxBetsPerPlayer = 5;
       else if (playerCount >= 4)    maxBetsPerPlayer = 5;
-      else if (playerCount >= 3)    maxBetsPerPlayer = 6;
-      else                          maxBetsPerPlayer = 7;
+      else if (playerCount >= 3)    maxBetsPerPlayer = 4;
+      else                          maxBetsPerPlayer = 3;
 
       const firstPlayerId = Object.keys(players)[0];
       await update(stateRef, {
@@ -2059,6 +2058,24 @@ async function updateGameDOM(state) {
     if (stage === 1) {
       options = ['Red','Black'];
       if (pdata.addBlueSuits) options.push('Blue');
+
+      // ─── Color Distribution HUD ─────────────────────────────────
+      const shoe = pdata.personalDeck || [];
+      let redCount = 0, blackCount = 0, blueCount = 0;
+      shoe.forEach(c => {
+        if (c.suit === '♥' || c.suit === '♦') redCount++;
+        else if (c.suit === '♠' || c.suit === '♣') blackCount++;
+        else if (c.suit === '☾' || c.suit === '★') blueCount++;
+      });
+      const total = redCount + blackCount + blueCount;
+      let hudText = `🃏 Remaining: Red ${redCount} | Black ${blackCount}`;
+      if (pdata.addBlueSuits) hudText += ` | Blue ${blueCount}`;
+      hudText += ` (${total} cards)`;
+      const hudEl = document.createElement('div');
+      hudEl.style.cssText = 'width:100%;text-align:center;font-size:0.95rem;opacity:0.85;margin-bottom:0.5rem;';
+      hudEl.textContent = hudText;
+      guessArea.appendChild(hudEl);
+      // ────────────────────────────────────────────────────────────
     } else if (stage === 4) {
       const suits = ['♠','♥','♦','♣'];
       if (pdata.addBlueSuits) suits.push('☾','★');
@@ -2429,8 +2446,7 @@ async function showShopOptions(isWinner) {
   const betModifiersMap = {
     "Bonus Bets": {
       name: "Bonus Bets",
-      // show the dynamic cost in the description if you like:
-      desc: "+2 bets per round (cost ↑ by 2 each time)",
+      desc: "+1 bet per round (cost ↑ by 2 each time)",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val() || {};
@@ -2444,12 +2460,12 @@ async function showShopOptions(isWinner) {
           return alert(`You need ${cost} tokens to buy Bonus Bets.`);
         }
 
-        // 3) apply the +2 bets
-        const newBonus = (data.betModifierBonus || 0) + 2;
+        // 3) apply the +1 bet
+        const newBonus = (data.betModifierBonus || 0) + 1;
         // 4) bump the purchase count
         const newCount = count + 1;
         // 5) record history
-        const history = [...(data.modifierHistory||[]), `+2 bets per round (#${newCount})`];
+        const history = [...(data.modifierHistory||[]), `+1 bet per round (#${newCount})`];
 
         await update(playerRef, {
           betModifierBonus:  newBonus,
@@ -2458,7 +2474,7 @@ async function showShopOptions(isWinner) {
           modifierHistory:   history
         });
 
-        alert(`Bonus Bets purchased (#${newCount})! +2 bets per round.`);
+        alert(`Bonus Bets purchased (#${newCount})! +1 bet per round.`);
         document.getElementById('playerTokens').textContent = `Tokens: ${tokens - cost}`;
         displayMultipliers();
       }
@@ -2466,7 +2482,7 @@ async function showShopOptions(isWinner) {
 
     "Super Multiplier": {
       name: "Super Multiplier",
-      desc: "Increase all win multipliers by 1.25x, -2 bets",
+      desc: "Increase all win multipliers by 1.25x, -1 bet",
       apply: async () => {
         const snap = await get(playerRef);
         const data = snap.val();
@@ -2479,16 +2495,16 @@ async function showShopOptions(isWinner) {
         }
         const currentBonus = data.betModifierBonus || 0;
         const effectiveBets = maxBetsPerPlayer + currentBonus;
-        if (effectiveBets <= 2) return alert("⚠️ Cannot purchase: your total bets would drop below 1.");
+        if (effectiveBets <= 1) return alert("⚠️ Cannot purchase: your total bets would drop below 1.");
         
-        alert("Multipliers increased by 1.25x! You lose 2 bets.");
+        alert("Multipliers increased by 1.25x! You lose 1 bet.");
 
         const history = data.modifierHistory || [];
-        history.push("Increase all win multipliers by 1.25x, -2 bets");
+        history.push("Increase all win multipliers by 1.25x, -1 bet");
 
         await update(playerRef, {
           multipliers: newMultipliers,
-          betModifierBonus: currentBonus - 2,
+          betModifierBonus: currentBonus - 1,
           purchaseTokens: tokens - 3,
           modifierHistory: history
         });
