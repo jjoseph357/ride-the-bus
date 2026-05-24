@@ -2060,7 +2060,8 @@ async function updateGameDOM(state) {
       if (pdata.addBlueSuits) options.push('Blue');
 
       // ─── Color Distribution HUD ─────────────────────────────────
-      const shoe = pdata.personalDeck || [];
+      let shoe = pdata.personalDeck || [];
+      if (shoe.length === 0) shoe = buildPlayerDeck(pdata);
       let redCount = 0, blackCount = 0, blueCount = 0;
       shoe.forEach(c => {
         if (c.suit === '♥' || c.suit === '♦') redCount++;
