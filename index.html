@@ -379,7 +379,64 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, get, child, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+    import { getDatabase, ref as _fbRef, set as _fbSet, update as _fbUpdate, onValue as _fbOnValue, get as _fbGet, child, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+    // ─── In-Memory DB Mock for Single Player ─────────────────────────
+    const _mockDb = {};
+    const _mockListeners = [];
+    function _clone(v) { return v == null ? null : JSON.parse(JSON.stringify(v)); }
+    function _getPath(obj, parts) {
+      let c = obj;
+      for (const p of parts) { if (c == null || typeof c !== 'object') return undefined; c = c[p]; }
+      return c;
+    }
+    function _makePath(obj, parts) {
+      let c = obj;
+      for (const p of parts) { if (c[p] == null || typeof c[p] !== 'object') c[p] = {}; c = c[p]; }
+      return c;
+    }
+    function _notifyMock(path) {
+      for (const l of [..._mockListeners]) {
+        if (path.startsWith(l.path) || l.path.startsWith(path)) {
+          try { const v = _getPath(_mockDb, l.path.split('/')); l.cb({ val: () => _clone(v ?? null) }); }
+          catch (e) { console.warn('Mock listener error:', e); }
+        }
+      }
+    }
+    function ref(_, path) {
+      if (soloMode) return { _lp: path, _pp: path.split('/') };
+      return _fbRef(_, path);
+    }
+    function get(r) {
+      if (r._lp !== undefined) { const v = _getPath(_mockDb, r._pp); return Promise.resolve({ val: () => _clone(v ?? null) }); }
+      return _fbGet(r);
+    }
+    function set(r, val) {
+      if (r._lp !== undefined) {
+        _makePath(_mockDb, r._pp.slice(0, -1));
+        let c = _mockDb; for (let i = 0; i < r._pp.length - 1; i++) c = c[r._pp[i]];
+        c[r._pp[r._pp.length - 1]] = _clone(val);
+        _notifyMock(r._lp); return Promise.resolve();
+      }
+      return _fbSet(r, val);
+    }
+    function update(r, upd) {
+      if (r._lp !== undefined) {
+        const t = _makePath(_mockDb, r._pp);
+        for (const [k, v] of Object.entries(upd)) t[k] = _clone(v);
+        _notifyMock(r._lp); return Promise.resolve();
+      }
+      return _fbUpdate(r, upd);
+    }
+    function onValue(r, cb) {
+      if (r._lp !== undefined) {
+        _mockListeners.push({ path: r._lp, cb });
+        const v = _getPath(_mockDb, r._pp);
+        cb({ val: () => _clone(v ?? null) });
+        return () => { const i = _mockListeners.findIndex(l => l.cb === cb); if (i >= 0) _mockListeners.splice(i, 1); };
+      }
+      return _fbOnValue(r, cb);
+    }
 
     // --- SETTINGS STATE ---
     const settings = {
@@ -433,6 +490,13 @@
   let soloMode = false;
 
 
+function getEffectiveMultiplier(pdata, stage) {
+  const base = pdata?.multipliers?.[stage] ?? multipliers[stage];
+  if (!pdata?.hasDeckPower) return base;
+  const sz = buildPlayerDeck(pdata).length;
+  return +(base * (sz / 52)).toFixed(2);
+}
+
 async function displayMultipliers() {
   const list = document.getElementById("multiplierBonuses");
   if (!list || !playerRef) return;
@@ -441,10 +505,11 @@ async function displayMultipliers() {
   const player = snap.val();
   const mults = player?.multipliers || {};
 
-  // build the <li> entries for each stage
-    const items = Object.entries(mults).map(
-    ([stage, mult]) => `<li>Stage ${stage}: ${mult}x</li>`
-  );
+  // build the <li> entries for each stage (apply Deck Power scaling)
+    const items = Object.keys(mults).map(stage => {
+    const eff = getEffectiveMultiplier(player, parseInt(stage));
+    return `<li>Stage ${stage}: ${eff}x</li>`;
+  });
 
   // if Power Rush is active, append its info
   const roundsLeft = player.powerRushRoundsLeft || 0;
@@ -1203,7 +1268,7 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 1) Base multiplier from card‑upgraded array
-      let multiplier = pdata.multipliers?.[1] || multipliers[1];
+      let multiplier = getEffectiveMultiplier(pdata, 1);
       // 2) Card modifier “burn” effects (run before any bet‑mods)
       // ─── one‑time +3 Mult burn ─────────────────────────────
       if (pdata.bonusPlus3Active) {
@@ -1357,7 +1422,7 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 3 cash‑out (3×)
-      let multiplier = pdata.multipliers?.[2] || multipliers[2];
+      let multiplier = getEffectiveMultiplier(pdata, 2);
 
       // 4) Burn “one‑off” card modifiers first
       if (pdata.bonusPlus3Active) {
@@ -1503,7 +1568,7 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 4 cash‑out (4×)
-      let multiplier = pdata.multipliers?.[3] || multipliers[3];
+      let multiplier = getEffectiveMultiplier(pdata, 3);
 
       // 4) Burn card modifiers
       if (pdata.bonusPlus3Active) {
@@ -1646,7 +1711,7 @@ async function handleGuess(guess, state) {
       await update(stateRef, state);
 
       // 3) Base multiplier for Stage 5 cash‑out (20×)
-      let multiplier = pdata.multipliers?.[4] || multipliers[4];
+      let multiplier = getEffectiveMultiplier(pdata, 4);
 
       // 4) Burn card modifiers
       if (pdata.bonusPlus3Active) {
@@ -1769,8 +1834,8 @@ async function handleGuess(guess, state) {
       const psnap = await get(playerRef);
       const pdata = psnap.val() || {};
       let multiplier = pdata.snowballer && pdata.lastBalanceBeforeBet
-        ? (pdata.multipliers?.[5] || multipliers[5] || 500) + (bet / pdata.lastBalanceBeforeBet)
-        : (pdata.multipliers?.[5] || multipliers[5] || 500);
+        ? getEffectiveMultiplier(pdata, 5) + (bet / pdata.lastBalanceBeforeBet)
+        : getEffectiveMultiplier(pdata, 5);
       if (pdata.allInBonus && pdata.isAllIn) multiplier *= 3;
 
       const payout = Math.floor(bet * multiplier);
@@ -2007,7 +2072,7 @@ async function updateGameDOM(state) {
       const btn = document.createElement('button');
       if (opt === 'Cash Out') {
         const baseKey  = stage - 1;
-        const baseMult = pdata.multipliers?.[baseKey] ?? multipliers[baseKey];
+        const baseMult = getEffectiveMultiplier(pdata, baseKey);
 
         let actualMult = baseMult;
 
@@ -2413,6 +2478,8 @@ async function showShopOptions(isWinner) {
           newMultipliers[stage] = Math.round(mult * 1.25);
         }
         const currentBonus = data.betModifierBonus || 0;
+        const effectiveBets = maxBetsPerPlayer + currentBonus;
+        if (effectiveBets <= 2) return alert("⚠️ Cannot purchase: your total bets would drop below 1.");
         
         alert("Multipliers increased by 1.25x! You lose 2 bets.");
 
@@ -3180,43 +3247,26 @@ async function showShopOptions(isWinner) {
     },
     "Deck Power": {
       name: "Deck Power",
-      desc: "Multiply all win multipliers by (|Deck Size| / 52)",
+      desc: "Dynamically scale all multipliers by (Deck Size / 52)",
       apply: async () => {
-        /* 1) Grab freshest player data */
         const snap   = await get(playerRef);
         const data   = snap.val() || {};
         const tokens = data.purchaseTokens || 0;
-
-        /* 2) Set cost (BASE_PRICE_BUMP is added later) */
-        const cost = 4;   // change here if you want it cheaper / dearer
+        const cost = 4;
         if (tokens < cost) return alert("You don't have enough tokens.");
+        if (data.hasDeckPower) return alert("⚠️ You already have Deck Power.");
 
-        /* 3) Build the REAL deck to get its current length */
-        const deckSize = buildPlayerDeck(data).length;   // includes dup. cards, blue suits, removals, etc.
-
-        /* 4) Factor = |deck| / 52 (cap at e.g. 3x if you ever want) */
-        const factor = deckSize / 52;
-
-        /* 5) Apply the factor to every stage multiplier */
-        const base = { 1:2, 2:3, 3:4, 4:20, 5:500 };
-        const oldM = { ...base, ...(data.multipliers || {}) };
-        const newM = {};
-        for (const [stage, m] of Object.entries(oldM)) {
-          newM[stage] = +(m * factor).toFixed(2);        // keep two decimals
-        }
-
-        /* 6) Persist changes */
+        const deckSize = buildPlayerDeck(data).length;
         await update(playerRef, {
-          multipliers:     newM,
+          hasDeckPower:    true,
           purchaseTokens:  tokens - cost,
           modifierHistory: [
             ...(data.modifierHistory || []),
-            `Deck Power: ${factor.toFixed(2)}x (deck size: ${deckSize})`
+            `Deck Power: multipliers now scale by deck size/52 (current: ${deckSize})`
           ]
         });
 
-        /* 7) UI refresh */
-        alert(`Deck Power purchased! All multipliers ${factor.toFixed(2)}x.`);
+        alert(`Deck Power purchased! All multipliers now scale dynamically by deck size.`);
         document.getElementById('playerTokens')
                 .textContent = `Tokens: ${tokens - cost}`;
         displayMultipliers();
@@ -3527,41 +3577,23 @@ async function showShopOptions(isWinner) {
       const cardUpgrades = latest.cardUpgrades   || [];
       const dupCounts    = latest.duplicateCounts || {};
 
-      // 4️⃣ Check for an existing upgrade on this card
-      const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
-      let entryText;
-
-      if (oldIdx !== -1) {
-        // Replacing an old effect
-        const oldCode = cardUpgrades[oldIdx].effect;
-        const oldDesc = mapDesc[oldCode] || oldCode;
-        const newDesc = mapDesc[effectText];
-        entryText = `${upgradeCard.text}: Replaced with ${newDesc}`;
-        cardUpgrades.splice(oldIdx, 1);
-      } else {
-        // First‐time upgrade
-        const newDesc = mapDesc[effectText];
-        entryText = `${upgradeCard.text}: ${newDesc}`;
-      }
-
-      // 5️⃣ Apply the new effect
-      const prevUpgrade = (latest.cardUpgrades || []).find(u => u.text === upgradeCard.text);
-
+      // 4️⃣ Apply the new effect
       if (effectText === 'duplicate_card') {
+        // Duplicate: just add a copy to the deck, preserve existing upgrades
         const newCount = (dupCounts[upgradeCard.text] || 0) + 1;
         dupCounts[upgradeCard.text] = newCount;
         history.push(`Duplicate ${upgradeCard.text} (x${newCount})`);
-
-        if (prevUpgrade) cardUpgrades.push(prevUpgrade);
-
-        // Also preserve any existing upgrade on this card
-        const existingUpgrade = (latest.cardUpgrades || []).find(u => u.text === upgradeCard.text);
-        if (existingUpgrade) {
-          // Just re-add the same upgrade (duplicates are okay since they're all applied at draw)
-          cardUpgrades.push({ text: upgradeCard.text, effect: existingUpgrade.effect });
-        }
       } else {
-              // all other card‐upgrades go here
+        // For all other effects: replace existing upgrade or add new one
+        const oldIdx = cardUpgrades.findIndex(u => u.text === upgradeCard.text);
+        let entryText;
+        if (oldIdx !== -1) {
+          const newDesc = mapDesc[effectText];
+          entryText = `${upgradeCard.text}: Replaced with ${newDesc}`;
+          cardUpgrades.splice(oldIdx, 1);
+        } else {
+          entryText = `${upgradeCard.text}: ${mapDesc[effectText]}`;
+        }
         cardUpgrades.push({ text: upgradeCard.text, effect: effectText });
         history.push(entryText);
       }
@@ -3777,10 +3809,10 @@ async function resetAllPlayers(players) {
 
   // sync local copy for this client
   if (players[playerId]) {
-    const me  = players[playerId];
-    const m   = me.startBalanceMultiplier || 1;
-    localPlayer.balance  = Math.floor(100 * m);
-    localPlayer.betsMade = 0;
+    const freshSnap = await get(playerRef);
+    const freshMe   = freshSnap.val() || {};
+    localPlayer.balance    = freshMe.balance;
+    localPlayer.betsMade   = 0;
     localPlayer.eliminated = false;
   }
 }
