@@ -936,10 +936,10 @@ window.addEventListener("DOMContentLoaded", () => {
       }
 
       // ───── MULTIPLAYER ─────
-      if (playerCount >= 6)         maxBetsPerPlayer = 5;
-      else if (playerCount >= 5)    maxBetsPerPlayer = 5;
-      else if (playerCount >= 4)    maxBetsPerPlayer = 5;
-      else if (playerCount >= 3)    maxBetsPerPlayer = 4;
+      if (playerCount >= 6)         maxBetsPerPlayer = 3;
+      else if (playerCount >= 5)    maxBetsPerPlayer = 3;
+      else if (playerCount >= 4)    maxBetsPerPlayer = 3;
+      else if (playerCount >= 3)    maxBetsPerPlayer = 3;
       else                          maxBetsPerPlayer = 3;
 
       const firstPlayerId = Object.keys(players)[0];
